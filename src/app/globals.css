@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: 'Avenir Next', 'Montserrat', 'Segoe UI Variable', 'Noto Sans', sans-serif;
+  --font-display: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, serif;
+
+  --background: 210 33% 98%;
+  --foreground: 220 43% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 220 43% 11%;
+  --primary: 214 74% 24%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 214 35% 93%;
+  --secondary-foreground: 214 50% 18%;
+  --muted: 214 24% 93%;
+  --muted-foreground: 215 17% 35%;
+  --accent: 28 94% 52%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 72% 50%;
+  --border: 214 25% 86%;
+  --input: 214 25% 86%;
+  --ring: 214 74% 24%;
+}
+
+* {
+  @apply border-border;
+}
+
+body {
+  @apply bg-background text-foreground antialiased;
+  font-family: var(--font-sans);
+  background-image:
+    radial-gradient(circle at 12% 14%, rgba(11, 55, 118, 0.1), transparent 35%),
+    radial-gradient(circle at 88% 82%, rgba(234, 132, 15, 0.1), transparent 30%);
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.cobranza-map-marker {
+  position: relative;
+  display: grid;
+  height: 2.5rem;
+  width: 2.5rem;
+  place-items: center;
+  border-radius: 9999px;
+  border: 3px solid #fff;
+  color: #fff;
+  transition:
+    transform 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.cobranza-map-marker:hover {
+  transform: translateY(-1px) scale(1.03);
+}
+
+.cobranza-map-marker__label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.cobranza-map-marker__chip {
+  position: absolute;
+  right: -0.2rem;
+  top: -0.2rem;
+  min-width: 1rem;
+  padding: 0.05rem 0.22rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  color: #fff;
+  font-size: 0.58rem;
+  font-weight: 700;
+  line-height: 1.1;
+  text-align: center;
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.18);
+}
+
+.cobranza-map-popup .maplibregl-popup-content {
+  border-radius: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  padding: 0.9rem;
+  box-shadow: 0 22px 45px rgba(15, 23, 42, 0.18);
+}
+
+.cobranza-map-popup .maplibregl-popup-close-button {
+  right: 0.4rem;
+  top: 0.3rem;
+  font-size: 1rem;
+  color: rgb(100 116 139);
+}

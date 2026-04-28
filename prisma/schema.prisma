@@ -1,0 +1,1050 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SettingValueType {
+  STRING
+  NUMBER
+  BOOLEAN
+  JSON
+}
+
+enum InstallmentKind {
+  REGULAR
+  EXTRA
+}
+
+enum AllocationType {
+  CURRENT
+  RECOVERY
+  ADVANCE
+  EXTRA_WEEK
+  PENALTY
+}
+
+enum AdvanceStatus {
+  PENDING
+  APPLIED
+  CANCELLED
+  REVERSED
+}
+
+enum ExtraWeekStatus {
+  PENDING
+  PARTIAL
+  PAID
+  EXEMPT
+  REVERSED
+}
+
+enum InteraccionTipo {
+  CALL
+  WHATSAPP
+  SMS
+  VISIT
+  NOTE
+}
+
+enum InteraccionCanal {
+  PHONE
+  WHATSAPP
+  SMS
+  IN_PERSON
+  OTHER
+}
+
+enum InteraccionResultado {
+  NO_ANSWER
+  CONTACTED
+  PROMISE_REGISTERED
+  PAID_REPORTED
+  REFUSED
+  WRONG_NUMBER
+  NOT_AVAILABLE
+  FOLLOW_UP_REQUIRED
+  OTHER
+}
+
+enum PromesaPagoEstado {
+  PENDING
+  FULFILLED
+  BROKEN
+  CANCELLED
+}
+
+enum VisitaCampoResultado {
+  VISIT_SUCCESSFUL
+  CLIENT_NOT_HOME
+  ADDRESS_NOT_FOUND
+  PAYMENT_COLLECTED_REPORTED
+  FOLLOW_UP_REQUIRED
+  REFUSED_CONTACT
+  OTHER
+}
+
+enum ExpedienteAlertaTipo {
+  SHARED_PHONE
+  SHARED_ADDRESS
+  SHARED_GUARANTOR
+  CLIENT_GUARANTOR_SAME_PHONE
+  EARLY_CONTACT_FAILURE
+  ADDRESS_NOT_LOCATED_EARLY
+  CLUSTERED_RISK_BY_PROMOTORIA
+  EXPEDIENTE_DEBIL
+  OTHER
+}
+
+enum ExpedienteAlertaSeveridad {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ExpedienteAlertaStatus {
+  OPEN
+  REVIEWED
+  DISMISSED
+  CONFIRMED_PATTERN
+}
+
+enum ReversalSourceType {
+  PAYMENT_EVENT
+  DEFAULT_EVENT
+  PENALTY_CHARGE
+  ADVANCE_EVENT
+  RECOVERY_EVENT
+  EXTRA_WEEK_EVENT
+}
+
+enum CobranzaSyncLedgerType {
+  INTERACTION
+  PROMESA
+  VISITA
+}
+
+enum ClienteGeoReferenceSource {
+  VISIT_GPS
+  MANUAL
+  GEOCODE
+  NONE
+}
+
+enum LegalCreditStatus {
+  NONE
+  PRELEGAL
+  LEGAL_REVIEW
+  IN_LAWSUIT
+  LEGAL_CLOSED
+}
+
+enum ClientePlacementStatus {
+  ELIGIBLE
+  BLOCKED_LEGAL
+}
+
+enum LegalCreditEventType {
+  SEND_TO_LEGAL
+  CHANGE_LEGAL_STATUS
+  LEGAL_NOTE
+}
+
+enum MessageType {
+  PAYMENT_REMINDER
+  COLLECTION_FOLLOWUP
+  LEGAL_NOTICE
+  RENEWAL_OFFER
+  MANUAL_MESSAGE
+}
+
+enum CommunicationChannel {
+  WHATSAPP
+  SMS
+  EMAIL
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  CANCELED
+}
+
+enum CommunicationSourceContext {
+  CLIENTE
+  CREDITO
+  COBRANZA
+  JURIDICO
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  passwordHash String
+  userTypeId   String?
+  userType     UserType? @relation(fields: [userTypeId], references: [id])
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  roles         UserRole[]
+  audits        AuditLog[]
+  financialLogs FinancialEventLog[]
+
+  createdCredits           Credito[]           @relation("CreditCreatedBy")
+  updatedCredits           Credito[]           @relation("CreditUpdatedBy")
+  createdLegalCreditEvents CreditoLegalEvent[] @relation("LegalCreditEventCreatedBy")
+
+  capturedPayments          PaymentEvent[]     @relation("PaymentCapturedBy")
+  reversedPayments          PaymentEvent[]     @relation("PaymentReversedBy")
+  createdInteracciones      Interaccion[]      @relation("InteraccionCreatedBy")
+  createdPromesasPago       PromesaPago[]      @relation("PromesaPagoCreatedBy")
+  createdVisitasCampo       VisitaCampo[]      @relation("VisitaCampoCreatedBy")
+  reviewedExpedienteAlertas ExpedienteAlerta[] @relation("ExpedienteAlertaReviewedBy")
+  createdMessageTemplates   MessageTemplate[]  @relation("MessageTemplateCreatedBy")
+  updatedMessageTemplates   MessageTemplate[]  @relation("MessageTemplateUpdatedBy")
+  createdCommunicationLogs  CommunicationLog[] @relation("CommunicationLogCreatedBy")
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([sessionToken])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@id([identifier, token])
+}
+
+model UserType {
+  id       String  @id @default(cuid())
+  code     String  @unique
+  name     String
+  isActive Boolean @default(true)
+
+  users User[]
+}
+
+model Role {
+  id          String           @id @default(cuid())
+  code        String           @unique
+  name        String
+  users       UserRole[]
+  permissions RolePermission[]
+}
+
+model Permission {
+  id    String           @id @default(cuid())
+  code  String           @unique
+  name  String
+  roles RolePermission[]
+}
+
+model UserRole {
+  userId String
+  roleId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model Supervision {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  promotorias Promotoria[]
+
+  @@map("Zone")
+}
+
+model ClientTypeCatalog {
+  id       String  @id @default(cuid())
+  code     String  @unique
+  name     String
+  isActive Boolean @default(true)
+
+  clientes Cliente[]
+}
+
+model CreditStatusCatalog {
+  id       String  @id @default(cuid())
+  code     String  @unique
+  name     String
+  isActive Boolean @default(true)
+
+  credits Credito[]
+}
+
+model PenaltyStatusCatalog {
+  id       String  @id @default(cuid())
+  code     String  @unique
+  name     String
+  isActive Boolean @default(true)
+
+  penalties PenaltyCharge[]
+}
+
+model PaymentStatusCatalog {
+  id       String  @id @default(cuid())
+  code     String  @unique
+  name     String
+  isActive Boolean @default(true)
+
+  payments PaymentEvent[]
+}
+
+model InstallmentStatusCatalog {
+  id       String  @id @default(cuid())
+  code     String  @unique
+  name     String
+  isActive Boolean @default(true)
+
+  installments CreditSchedule[]
+}
+
+model Promotoria {
+  id                   String       @id @default(cuid())
+  code                 String       @unique
+  name                 String
+  externalPromotoriaId String?      @unique
+  supervisionId        String?      @map("zoneId")
+  supervision          Supervision? @relation(fields: [supervisionId], references: [id], onDelete: SetNull)
+  isActive             Boolean      @default(true)
+  deletedAt            DateTime?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  clientes          Cliente[]
+  creditos          Credito[]
+  expedienteAlertas ExpedienteAlerta[]
+
+  @@map("Grupo")
+}
+
+model Cliente {
+  id                 String             @id @default(cuid())
+  code               String             @unique
+  externalClientId   String?            @unique
+  fullName           String
+  phone              String
+  secondaryPhone     String?
+  address            String
+  postalCode         String
+  neighborhood       String?
+  city               String?
+  state              String?
+  betweenStreets     String?
+  referencesNotes    String?
+  observations       String?
+  ineFrontPath       String?
+  ineBackPath        String?
+  pagareFrontPath    String?
+  pagareBackPath     String?
+  proofOfAddressPath String?
+  clientTypeId       String?
+  clientType         ClientTypeCatalog? @relation(fields: [clientTypeId], references: [id])
+
+  promotoriaId String?     @map("grupoId")
+  promotoria   Promotoria? @relation(fields: [promotoriaId], references: [id], onDelete: SetNull)
+
+  searchableName    String?
+  searchablePhone   String?
+  searchableAddress String?
+
+  placementStatus               ClientePlacementStatus @default(ELIGIBLE)
+  placementBlockedAt            DateTime?
+  placementBlockReason          String?
+  placementBlockSourceCreditoId String?
+
+  isActive  Boolean   @default(true)
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  creditosTitular   Credito[]             @relation("CreditHolder")
+  creditosAvalados  Credito[]             @relation("CreditAval")
+  interacciones     Interaccion[]
+  promesasPago      PromesaPago[]
+  visitasCampo      VisitaCampo[]
+  geoReferences     ClienteGeoReference[]
+  expedienteAlertas ExpedienteAlerta[]
+  legalEvents       CreditoLegalEvent[]
+  communicationLogs CommunicationLog[]
+
+  @@index([fullName])
+  @@index([phone])
+  @@index([secondaryPhone])
+  @@index([postalCode])
+  @@index([searchableName])
+  @@index([searchablePhone])
+  @@index([searchableAddress])
+  @@index([placementStatus])
+  @@index([promotoriaId], map: "Cliente_grupoId_idx")
+}
+
+model CreditPlanRule {
+  id                String    @id @default(cuid())
+  code              String
+  version           Int       @default(1)
+  weeks             Int
+  weeklyFactor      Decimal?  @db.Decimal(10, 6)
+  formulaExpression String?
+  roundingRule      String?
+  isActive          Boolean   @default(true)
+  effectiveFrom     DateTime  @default(now())
+  effectiveTo       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  credits Credito[]
+
+  @@unique([code, version])
+}
+
+model Credito {
+  id            String  @id @default(cuid())
+  folio         String  @unique
+  loanNumber    String  @unique
+  saleId        String? @unique
+  controlNumber Int?
+
+  clienteId     String
+  avalClienteId String?
+  promotoriaId  String  @map("grupoId")
+
+  creditPlanRuleId String
+  creditPlanRule   CreditPlanRule @relation(fields: [creditPlanRuleId], references: [id], onDelete: Restrict)
+
+  planCodeSnapshot    String
+  planVersionSnapshot Int
+  planWeeksSnapshot   Int
+  planFactorSnapshot  Decimal? @db.Decimal(10, 6)
+
+  principalAmount    Decimal  @db.Decimal(12, 2)
+  weeklyAmount       Decimal  @db.Decimal(12, 2)
+  totalPayableAmount Decimal? @db.Decimal(12, 2)
+  totalWeeks         Int
+  startDate          DateTime
+
+  creditStatusId String
+  creditStatus   CreditStatusCatalog @relation(fields: [creditStatusId], references: [id], onDelete: Restrict)
+
+  notes                String?
+  closedAt             DateTime?
+  cancelledAt          DateTime?
+  legalStatus          LegalCreditStatus @default(NONE)
+  legalStatusChangedAt DateTime?
+  sentToLegalAt        DateTime?
+  legalStatusReason    String?
+  legalStatusNotes     String?
+  legalUpdatedByUserId String?
+
+  createdByUserId String
+  updatedByUserId String?
+
+  createdByUser User  @relation("CreditCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedByUser User? @relation("CreditUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: Restrict)
+
+  cliente    Cliente    @relation("CreditHolder", fields: [clienteId], references: [id], onDelete: Restrict)
+  aval       Cliente?   @relation("CreditAval", fields: [avalClienteId], references: [id], onDelete: SetNull)
+  promotoria Promotoria @relation(fields: [promotoriaId], references: [id], onDelete: Restrict)
+
+  schedules  CreditSchedule[]
+  payments   PaymentEvent[]
+  defaults   DefaultEvent[]
+  penalties  PenaltyCharge[]
+  recoveries RecoveryEvent[]
+  advances   AdvanceEvent[]
+  extraWeek  ExtraWeekEvent?
+
+  reversals         FinancialReversal[]
+  financialLogs     FinancialEventLog[]
+  interacciones     Interaccion[]
+  promesasPago      PromesaPago[]
+  visitasCampo      VisitaCampo[]
+  geoReferences     ClienteGeoReference[]
+  expedienteAlertas ExpedienteAlerta[]
+  legalEvents       CreditoLegalEvent[]
+  legalMetadata     CreditoLegalMetadata?
+  communicationLogs CommunicationLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clienteId])
+  @@index([avalClienteId])
+  @@index([controlNumber])
+  @@index([legalStatus])
+  @@index([promotoriaId], map: "Credito_grupoId_idx")
+  @@index([creditStatusId])
+  @@index([creditPlanRuleId])
+}
+
+model CreditoLegalEvent {
+  id              String               @id @default(cuid())
+  creditoId       String
+  clienteId       String
+  eventType       LegalCreditEventType
+  previousStatus  LegalCreditStatus
+  nextStatus      LegalCreditStatus
+  effectiveDate   DateTime
+  motivo          String
+  observaciones   String?
+  createdByUserId String
+  createdAt       DateTime             @default(now())
+
+  credito       Credito @relation(fields: [creditoId], references: [id], onDelete: Restrict)
+  cliente       Cliente @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  createdByUser User    @relation("LegalCreditEventCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([creditoId, createdAt])
+  @@index([clienteId, createdAt])
+  @@index([eventType, createdAt])
+}
+
+model CreditoLegalMetadata {
+  id                    String   @id @default(cuid())
+  creditoId             String   @unique
+  assignedAttorneyName  String?
+  assignedLawOfficeName String?
+  judicialCaseNumber    String?
+  settlementNotes       String?
+  judicialRecoveryNotes String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  credito Credito @relation(fields: [creditoId], references: [id], onDelete: Restrict)
+}
+
+model MessageTemplate {
+  id              String               @id @default(cuid())
+  name            String
+  type            MessageType
+  channel         CommunicationChannel
+  subject         String?
+  content         String
+  isActive        Boolean              @default(true)
+  createdByUserId String?
+  updatedByUserId String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  createdByUser     User?              @relation("MessageTemplateCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  updatedByUser     User?              @relation("MessageTemplateUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  communicationLogs CommunicationLog[]
+
+  @@unique([type, channel, name])
+  @@index([type, channel, isActive])
+  @@index([isActive, updatedAt])
+}
+
+model CommunicationLog {
+  id                String                     @id @default(cuid())
+  clienteId         String
+  creditoId         String?
+  templateId        String?
+  channel           CommunicationChannel
+  type              MessageType
+  sourceContext     CommunicationSourceContext
+  status            DeliveryStatus             @default(PENDING)
+  recipient         String
+  subject           String?
+  renderedContent   String
+  templateName      String?
+  providerKey       String?
+  providerMessageId String?
+  errorMessage      String?
+  createdByUserId   String?
+  attemptedAt       DateTime                   @default(now())
+  sentAt            DateTime?
+  canceledAt        DateTime?
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+
+  cliente       Cliente          @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  credito       Credito?         @relation(fields: [creditoId], references: [id], onDelete: SetNull)
+  template      MessageTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  createdByUser User?            @relation("CommunicationLogCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([clienteId, attemptedAt])
+  @@index([creditoId, attemptedAt])
+  @@index([templateId, attemptedAt])
+  @@index([status, attemptedAt])
+  @@index([sourceContext, attemptedAt])
+  @@index([channel, type, attemptedAt])
+}
+
+model CreditSchedule {
+  id                String          @id @default(cuid())
+  creditoId         String
+  installmentNumber Int
+  kind              InstallmentKind @default(REGULAR)
+  dueDate           DateTime
+  expectedAmount    Decimal         @db.Decimal(12, 2)
+  paidAmount        Decimal         @default(0) @db.Decimal(12, 2)
+
+  installmentStatusId String
+  installmentStatus   InstallmentStatusCatalog @relation(fields: [installmentStatusId], references: [id], onDelete: Restrict)
+
+  credito Credito @relation(fields: [creditoId], references: [id], onDelete: Restrict)
+
+  allocations      PaymentAllocation[]
+  defaultEvents    DefaultEvent[]
+  advancesRecorded AdvanceEvent[]      @relation("AdvanceRecordedOnInstallment")
+  advancesCovered  AdvanceEvent[]      @relation("AdvanceCoversInstallment")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([creditoId, installmentNumber])
+  @@index([creditoId, dueDate])
+}
+
+model PaymentEvent {
+  id               String   @id @default(cuid())
+  creditoId        String
+  paymentStatusId  String
+  receivedAt       DateTime
+  amountReceived   Decimal  @db.Decimal(12, 2)
+  notes            String?
+  capturedByUserId String
+
+  isReversed       Boolean   @default(false)
+  reversedAt       DateTime?
+  reversedByUserId String?
+  reversalReason   String?
+
+  credito        Credito              @relation(fields: [creditoId], references: [id], onDelete: Restrict)
+  paymentStatus  PaymentStatusCatalog @relation(fields: [paymentStatusId], references: [id], onDelete: Restrict)
+  capturedByUser User                 @relation("PaymentCapturedBy", fields: [capturedByUserId], references: [id], onDelete: Restrict)
+  reversedByUser User?                @relation("PaymentReversedBy", fields: [reversedByUserId], references: [id], onDelete: Restrict)
+
+  allocations     PaymentAllocation[]
+  recoveries      RecoveryEvent[]
+  advances        AdvanceEvent[]
+  extraWeekEvents ExtraWeekEvent[]
+  reversals       FinancialReversal[] @relation("ReversalCompensationPayment")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([creditoId, receivedAt])
+  @@index([paymentStatusId])
+  @@index([isReversed])
+}
+
+model PaymentAllocation {
+  id             String         @id @default(cuid())
+  paymentEventId String
+  allocationType AllocationType
+  amount         Decimal        @db.Decimal(12, 2)
+  notes          String?
+
+  scheduleId       String?
+  defaultEventId   String?
+  penaltyChargeId  String?
+  extraWeekEventId String?
+
+  paymentEvent   PaymentEvent    @relation(fields: [paymentEventId], references: [id], onDelete: Restrict)
+  schedule       CreditSchedule? @relation(fields: [scheduleId], references: [id], onDelete: Restrict)
+  defaultEvent   DefaultEvent?   @relation(fields: [defaultEventId], references: [id], onDelete: Restrict)
+  penaltyCharge  PenaltyCharge?  @relation(fields: [penaltyChargeId], references: [id], onDelete: Restrict)
+  extraWeekEvent ExtraWeekEvent? @relation(fields: [extraWeekEventId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+
+  @@index([paymentEventId])
+  @@index([allocationType])
+  @@index([scheduleId])
+  @@index([defaultEventId])
+  @@index([penaltyChargeId])
+  @@index([extraWeekEventId])
+}
+
+model DefaultEvent {
+  id              String   @id @default(cuid())
+  creditoId       String
+  scheduleId      String
+  amountMissed    Decimal  @db.Decimal(12, 2)
+  notes           String?
+  createdByUserId String
+  createdAt       DateTime @default(now())
+
+  credito  Credito        @relation(fields: [creditoId], references: [id], onDelete: Restrict)
+  schedule CreditSchedule @relation(fields: [scheduleId], references: [id], onDelete: Restrict)
+
+  penalties   PenaltyCharge[]
+  recoveries  RecoveryEvent[]
+  allocations PaymentAllocation[]
+
+  @@unique([scheduleId])
+  @@index([creditoId, createdAt])
+}
+
+model PenaltyCharge {
+  id              String    @id @default(cuid())
+  creditoId       String
+  defaultEventId  String?
+  amount          Decimal   @db.Decimal(12, 2)
+  penaltyStatusId String
+  condonedAt      DateTime?
+  collectedAt     DateTime?
+  notes           String?
+  createdByUserId String
+  createdAt       DateTime  @default(now())
+
+  credito       Credito              @relation(fields: [creditoId], references: [id], onDelete: Restrict)
+  defaultEvent  DefaultEvent?        @relation(fields: [defaultEventId], references: [id], onDelete: Restrict)
+  penaltyStatus PenaltyStatusCatalog @relation(fields: [penaltyStatusId], references: [id], onDelete: Restrict)
+
+  allocations PaymentAllocation[]
+
+  @@index([creditoId])
+  @@index([defaultEventId])
+  @@index([penaltyStatusId])
+}
+
+model RecoveryEvent {
+  id              String   @id @default(cuid())
+  creditoId       String
+  paymentEventId  String
+  defaultEventId  String
+  recoveredAmount Decimal  @db.Decimal(12, 2)
+  createdByUserId String
+  createdAt       DateTime @default(now())
+
+  credito      Credito      @relation(fields: [creditoId], references: [id], onDelete: Restrict)
+  paymentEvent PaymentEvent @relation(fields: [paymentEventId], references: [id], onDelete: Restrict)
+  defaultEvent DefaultEvent @relation(fields: [defaultEventId], references: [id], onDelete: Restrict)
+
+  @@index([creditoId, createdAt])
+  @@index([defaultEventId])
+}
+
+model AdvanceEvent {
+  id             String @id @default(cuid())
+  creditoId      String
+  paymentEventId String
+
+  recordedOnInstallmentId String
+  coversInstallmentId     String
+
+  amount             Decimal       @db.Decimal(12, 2)
+  status             AdvanceStatus
+  isApplied          Boolean       @default(false)
+  appliedAt          DateTime?
+  registeredByUserId String
+  createdAt          DateTime      @default(now())
+
+  credito               Credito        @relation(fields: [creditoId], references: [id], onDelete: Restrict)
+  paymentEvent          PaymentEvent   @relation(fields: [paymentEventId], references: [id], onDelete: Restrict)
+  recordedOnInstallment CreditSchedule @relation("AdvanceRecordedOnInstallment", fields: [recordedOnInstallmentId], references: [id], onDelete: Restrict)
+  coversInstallment     CreditSchedule @relation("AdvanceCoversInstallment", fields: [coversInstallmentId], references: [id], onDelete: Restrict)
+
+  @@index([creditoId, createdAt])
+  @@index([recordedOnInstallmentId])
+  @@index([coversInstallmentId])
+  @@index([status])
+}
+
+model ExtraWeekEvent {
+  id                String          @id @default(cuid())
+  creditoId         String          @unique
+  extraWeekNumber   Int             @default(1)
+  dueDate           DateTime
+  expectedAmount    Decimal         @db.Decimal(12, 2)
+  paidAmount        Decimal         @default(0) @db.Decimal(12, 2)
+  status            ExtraWeekStatus
+  paidAt            DateTime?
+  generatedByUserId String
+  paymentEventId    String?
+  notes             String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  credito      Credito       @relation(fields: [creditoId], references: [id], onDelete: Restrict)
+  paymentEvent PaymentEvent? @relation(fields: [paymentEventId], references: [id], onDelete: Restrict)
+
+  allocations PaymentAllocation[]
+
+  @@index([dueDate])
+  @@index([status])
+}
+
+model Interaccion {
+  id               String               @id @default(cuid())
+  clienteId        String
+  creditoId        String?
+  tipo             InteraccionTipo
+  canal            InteraccionCanal?
+  resultado        InteraccionResultado
+  fechaHora        DateTime
+  duracionSegundos Int?
+  notas            String?
+  telefonoUsado    String?
+  createdByUserId  String
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  cliente       Cliente  @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  credito       Credito? @relation(fields: [creditoId], references: [id], onDelete: Restrict)
+  createdByUser User     @relation("InteraccionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  promesasPago PromesaPago[]
+  visitasCampo VisitaCampo[]
+
+  @@index([clienteId, fechaHora])
+  @@index([creditoId, fechaHora])
+  @@index([tipo, fechaHora])
+  @@index([resultado, fechaHora])
+}
+
+model PromesaPago {
+  id              String            @id @default(cuid())
+  clienteId       String
+  creditoId       String?
+  interaccionId   String?
+  fechaPromesa    DateTime
+  montoPrometido  Decimal?          @db.Decimal(12, 2)
+  estado          PromesaPagoEstado @default(PENDING)
+  notas           String?
+  createdByUserId String
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  cliente       Cliente      @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  credito       Credito?     @relation(fields: [creditoId], references: [id], onDelete: Restrict)
+  interaccion   Interaccion? @relation(fields: [interaccionId], references: [id], onDelete: SetNull)
+  createdByUser User         @relation("PromesaPagoCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([clienteId, fechaPromesa])
+  @@index([creditoId, fechaPromesa])
+  @@index([interaccionId])
+  @@index([estado, fechaPromesa])
+}
+
+model VisitaCampo {
+  id              String               @id @default(cuid())
+  clienteId       String
+  creditoId       String?
+  interaccionId   String?
+  fechaHora       DateTime
+  resultado       VisitaCampoResultado
+  notas           String?
+  direccionTexto  String?
+  referenciaLugar String?
+  latitud         Decimal?             @db.Decimal(10, 7)
+  longitud        Decimal?             @db.Decimal(10, 7)
+  createdByUserId String
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  cliente       Cliente      @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  credito       Credito?     @relation(fields: [creditoId], references: [id], onDelete: Restrict)
+  interaccion   Interaccion? @relation(fields: [interaccionId], references: [id], onDelete: SetNull)
+  createdByUser User         @relation("VisitaCampoCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([clienteId, fechaHora])
+  @@index([creditoId, fechaHora])
+  @@index([interaccionId])
+  @@index([resultado, fechaHora])
+}
+
+model ClienteGeoReference {
+  id                     String                    @id @default(cuid())
+  clienteId              String
+  creditoId              String?
+  latitud                Decimal                   @db.Decimal(10, 7)
+  longitud               Decimal                   @db.Decimal(10, 7)
+  source                 ClienteGeoReferenceSource
+  isApproximate          Boolean                   @default(false)
+  confidence             Int
+  provider               String?
+  placeId                String?
+  normalizedAddressQuery String?
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
+
+  cliente Cliente  @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  credito Credito? @relation(fields: [creditoId], references: [id], onDelete: SetNull)
+
+  @@index([clienteId, updatedAt])
+  @@index([creditoId, updatedAt])
+  @@index([clienteId, creditoId, updatedAt])
+  @@index([source, confidence, updatedAt])
+}
+
+model CobranzaSyncLedger {
+  eventId        String                 @id
+  type           CobranzaSyncLedgerType
+  payloadHash    String
+  recordId       String
+  syncedByUserId String
+  processedAt    DateTime               @default(now())
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  @@index([type, processedAt])
+  @@index([syncedByUserId, processedAt])
+}
+
+model ExpedienteAlerta {
+  id               String                    @id @default(cuid())
+  fingerprint      String                    @unique
+  clienteId        String?
+  creditoId        String?
+  promotoriaId     String?
+  tipoAlerta       ExpedienteAlertaTipo
+  severidad        ExpedienteAlertaSeveridad
+  descripcion      String
+  evidenciaJson    Json
+  status           ExpedienteAlertaStatus    @default(OPEN)
+  isCurrent        Boolean                   @default(true)
+  detectedAt       DateTime
+  lastSeenAt       DateTime
+  reviewedAt       DateTime?
+  reviewedByUserId String?
+  reviewNotes      String?
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+
+  cliente        Cliente?    @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  credito        Credito?    @relation(fields: [creditoId], references: [id], onDelete: SetNull)
+  promotoria     Promotoria? @relation(fields: [promotoriaId], references: [id], onDelete: SetNull)
+  reviewedByUser User?       @relation("ExpedienteAlertaReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([clienteId, status, isCurrent])
+  @@index([creditoId, status, isCurrent])
+  @@index([promotoriaId, status, isCurrent])
+  @@index([tipoAlerta, severidad, status])
+  @@index([status, isCurrent, detectedAt])
+}
+
+model BusinessRule {
+  id              String           @id @default(cuid())
+  key             String           @unique
+  valueType       SettingValueType
+  valueString     String?
+  valueNumber     Decimal?         @db.Decimal(14, 4)
+  valueBoolean    Boolean?
+  valueJson       Json?
+  description     String?
+  isActive        Boolean          @default(true)
+  effectiveFrom   DateTime         @default(now())
+  effectiveTo     DateTime?
+  updatedByUserId String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+}
+
+model SystemCounter {
+  key       String   @id
+  value     Int
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  module     String
+  entity     String
+  entityId   String
+  action     String
+  beforeJson Json?
+  afterJson  Json?
+  ip         String?
+  userAgent  String?
+  requestId  String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([module, createdAt])
+  @@index([entity, entityId])
+}
+
+model FinancialEventLog {
+  id             String   @id @default(cuid())
+  userId         String?
+  creditoId      String?
+  eventType      String
+  referenceTable String
+  referenceId    String
+  payload        Json
+  previousHash   String?
+  currentHash    String?
+  createdAt      DateTime @default(now())
+
+  user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  credito Credito? @relation(fields: [creditoId], references: [id], onDelete: SetNull)
+
+  @@index([creditoId, createdAt])
+  @@index([eventType, createdAt])
+}
+
+model FinancialReversal {
+  id               String             @id @default(cuid())
+  sourceType       ReversalSourceType
+  sourceId         String
+  creditoId        String
+  reason           String
+  notes            String?
+  reversedByUserId String
+  reversedAt       DateTime           @default(now())
+
+  compensationPaymentEventId String?
+
+  credito             Credito       @relation(fields: [creditoId], references: [id], onDelete: Restrict)
+  compensationPayment PaymentEvent? @relation("ReversalCompensationPayment", fields: [compensationPaymentEventId], references: [id], onDelete: SetNull)
+
+  @@unique([sourceType, sourceId])
+  @@index([creditoId, reversedAt])
+}

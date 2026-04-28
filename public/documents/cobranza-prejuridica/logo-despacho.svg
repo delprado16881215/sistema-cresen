@@ -1,0 +1,11 @@
+<svg width="720" height="180" viewBox="0 0 720 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="720" height="180" rx="24" fill="#0F3D34"/>
+  <rect x="24" y="24" width="132" height="132" rx="20" fill="#E6F4EF"/>
+  <path d="M67 67C67 54.2975 77.2975 44 90 44H95.5C119.524 44 139 63.4761 139 87.5C139 111.524 119.524 131 95.5 131H90C77.2975 131 67 120.703 67 108V67Z" fill="#0F3D34"/>
+  <path d="M96 63.5C83.5736 63.5 73.5 73.5736 73.5 86C73.5 98.4264 83.5736 108.5 96 108.5H100.5C112.926 108.5 123 98.4264 123 86C123 73.5736 112.926 63.5 100.5 63.5H96Z" fill="#59B08F"/>
+  <path d="M193 60H351.5" stroke="#59B08F" stroke-width="10" stroke-linecap="round"/>
+  <text x="193" y="102" fill="#FFFFFF" font-family="Helvetica, Arial, sans-serif" font-size="52" font-weight="700">CRESEN</text>
+  <text x="193" y="136" fill="#D3ECE4" font-family="Helvetica, Arial, sans-serif" font-size="22" font-weight="600" letter-spacing="2">GESTION PREJURIDICA</text>
+  <text x="520" y="80" fill="#D3ECE4" font-family="Helvetica, Arial, sans-serif" font-size="18" font-weight="600">Documento operativo</text>
+  <text x="520" y="110" fill="#FFFFFF" font-family="Helvetica, Arial, sans-serif" font-size="26" font-weight="700">Despacho Cresen</text>
+</svg>
