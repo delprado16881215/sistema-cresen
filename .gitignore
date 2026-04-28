@@ -7,4 +7,6 @@ out
 coverage
 prisma/dev.db
 public/uploads/
-migration-manifests/
+migration-manifests/.DS_Store
+.next.broken*/
+tsconfig.tsbuildinfo
