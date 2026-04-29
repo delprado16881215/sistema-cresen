@@ -6,6 +6,7 @@ import { PUBLIC_PATHS, ROUTE_PERMISSIONS } from '@/config/permissions';
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isApiRoute = pathname.startsWith('/api/');
+  const isSecureCookie = request.nextUrl.protocol === 'https:' || process.env.VERCEL === '1';
 
   const isPublic =
     pathname.startsWith('/api/auth/') ||
@@ -14,7 +15,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const token = await getToken({ req: request, secret: process.env.AUTH_SECRET });
+  const token = await getToken({
+    req: request,
+    secret: process.env.AUTH_SECRET,
+    secureCookie: isSecureCookie,
+  });
 
   if (!token) {
     if (isApiRoute) {
