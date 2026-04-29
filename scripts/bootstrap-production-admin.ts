@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, type Prisma } from '@prisma/client';
 import { hash } from 'bcryptjs';
 import { PERMISSIONS } from '../src/config/permissions';
 
@@ -32,17 +32,24 @@ const PERMISSION_LABELS: Record<string, string> = {
 
 type BootstrapOptions = {
   dryRun: boolean;
+  noTransaction: boolean;
 };
 
 function parseOptions(argv: string[]): BootstrapOptions & { help: boolean } {
   const options = {
     dryRun: false,
+    noTransaction: false,
     help: false,
   };
 
   for (const arg of argv) {
     if (arg === '--dry-run') {
       options.dryRun = true;
+      continue;
+    }
+
+    if (arg === '--no-transaction') {
+      options.noTransaction = true;
       continue;
     }
 
@@ -62,12 +69,17 @@ function printHelp() {
 Uso:
   ADMIN_EMAIL="admin@tu-dominio.com" ADMIN_PASSWORD="contraseña-segura" npm run prod:bootstrap-admin
   ADMIN_EMAIL="admin@tu-dominio.com" ADMIN_PASSWORD="contraseña-segura" npm run prod:bootstrap-admin:dry-run
+  ADMIN_EMAIL="admin@tu-dominio.com" ADMIN_PASSWORD="contraseña-segura" npm run prod:bootstrap-admin -- --no-transaction
 
 Variables:
   DATABASE_URL      Base de datos de producción.
   ADMIN_EMAIL       Correo del administrador inicial.
   ADMIN_PASSWORD    Contraseña inicial, mínimo 12 caracteres.
   ADMIN_NAME        Nombre visible opcional. Default: Administrador Inicial.
+
+Opciones:
+  --dry-run          Muestra qué haría sin escribir datos.
+  --no-transaction   Ejecuta upserts idempotentes sin transacción larga.
 `.trim());
 }
 
@@ -90,6 +102,129 @@ function getRoleName(roleCode: string) {
     .split('_')
     .map((part) => part.charAt(0) + part.slice(1).toLowerCase())
     .join(' ');
+}
+
+type BootstrapClient = PrismaClient | Prisma.TransactionClient;
+
+async function upsertUserType(client: BootstrapClient) {
+  return client.userType.upsert({
+    where: { code: 'INTERNAL' },
+    create: { code: 'INTERNAL', name: 'Interno', isActive: true },
+    update: { name: 'Interno', isActive: true },
+  });
+}
+
+async function upsertRoles(client: BootstrapClient) {
+  for (const roleCode of ROLE_CODES) {
+    await client.role.upsert({
+      where: { code: roleCode },
+      create: { code: roleCode, name: getRoleName(roleCode) },
+      update: { name: getRoleName(roleCode) },
+    });
+  }
+}
+
+async function upsertPermissions(
+  client: BootstrapClient,
+  permissionEntries: Array<{ code: string; name: string }>,
+) {
+  for (const permission of permissionEntries) {
+    await client.permission.upsert({
+      where: { code: permission.code },
+      create: permission,
+      update: { name: permission.name },
+    });
+  }
+}
+
+async function grantAllPermissionsToSuperAdmin(client: BootstrapClient) {
+  const superAdminRole = await client.role.findUniqueOrThrow({
+    where: { code: 'SUPER_ADMIN' },
+    select: { id: true },
+  });
+  const permissions = await client.permission.findMany({
+    select: { id: true },
+  });
+
+  for (const permission of permissions) {
+    await client.rolePermission.upsert({
+      where: {
+        roleId_permissionId: {
+          roleId: superAdminRole.id,
+          permissionId: permission.id,
+        },
+      },
+      create: {
+        roleId: superAdminRole.id,
+        permissionId: permission.id,
+      },
+      update: {},
+    });
+  }
+
+  return superAdminRole;
+}
+
+async function upsertAdminUser(input: {
+  client: BootstrapClient;
+  adminEmail: string;
+  adminName: string;
+  passwordHash: string;
+  internalTypeId: string;
+  superAdminRoleId: string;
+}) {
+  const admin = await input.client.user.upsert({
+    where: { email: input.adminEmail },
+    create: {
+      email: input.adminEmail,
+      name: input.adminName,
+      passwordHash: input.passwordHash,
+      userTypeId: input.internalTypeId,
+      isActive: true,
+    },
+    update: {
+      name: input.adminName,
+      passwordHash: input.passwordHash,
+      userTypeId: input.internalTypeId,
+      isActive: true,
+    },
+    select: { id: true },
+  });
+
+  await input.client.userRole.upsert({
+    where: {
+      userId_roleId: {
+        userId: admin.id,
+        roleId: input.superAdminRoleId,
+      },
+    },
+    create: {
+      userId: admin.id,
+      roleId: input.superAdminRoleId,
+    },
+    update: {},
+  });
+}
+
+async function applyBootstrap(input: {
+  client: BootstrapClient;
+  adminEmail: string;
+  adminName: string;
+  passwordHash: string;
+  permissionEntries: Array<{ code: string; name: string }>;
+}) {
+  const internalType = await upsertUserType(input.client);
+  await upsertRoles(input.client);
+  await upsertPermissions(input.client, input.permissionEntries);
+  const superAdminRole = await grantAllPermissionsToSuperAdmin(input.client);
+  await upsertAdminUser({
+    client: input.client,
+    adminEmail: input.adminEmail,
+    adminName: input.adminName,
+    passwordHash: input.passwordHash,
+    internalTypeId: internalType.id,
+    superAdminRoleId: superAdminRole.id,
+  });
 }
 
 async function bootstrapProductionAdmin(options: BootstrapOptions) {
@@ -122,6 +257,7 @@ async function bootstrapProductionAdmin(options: BootstrapOptions) {
       JSON.stringify(
         {
           dryRun: true,
+          noTransaction: options.noTransaction,
           willCreateOrUpdateUserType: 'INTERNAL',
           willUpsertRoles: ROLE_CODES,
           willUpsertPermissions: permissionEntries.map((permission) => permission.code),
@@ -143,84 +279,52 @@ async function bootstrapProductionAdmin(options: BootstrapOptions) {
 
   const passwordHash = await hash(adminPassword, 12);
 
-  await prisma.$transaction(async (tx) => {
-    const internalType = await tx.userType.upsert({
-      where: { code: 'INTERNAL' },
-      create: { code: 'INTERNAL', name: 'Interno', isActive: true },
-      update: { name: 'Interno', isActive: true },
+  if (options.noTransaction) {
+    await applyBootstrap({
+      client: prisma,
+      adminEmail,
+      adminName,
+      passwordHash,
+      permissionEntries,
     });
-
-    for (const roleCode of ROLE_CODES) {
-      await tx.role.upsert({
-        where: { code: roleCode },
-        create: { code: roleCode, name: getRoleName(roleCode) },
-        update: { name: getRoleName(roleCode) },
-      });
-    }
-
-    for (const permission of permissionEntries) {
-      await tx.permission.upsert({
-        where: { code: permission.code },
-        create: permission,
-        update: { name: permission.name },
-      });
-    }
-
-    const superAdminRole = await tx.role.findUniqueOrThrow({
-      where: { code: 'SUPER_ADMIN' },
-      select: { id: true },
-    });
-    const permissions = await tx.permission.findMany({
-      select: { id: true },
-    });
-
-    for (const permission of permissions) {
-      await tx.rolePermission.upsert({
-        where: {
-          roleId_permissionId: {
-            roleId: superAdminRole.id,
-            permissionId: permission.id,
-          },
-        },
-        create: {
-          roleId: superAdminRole.id,
-          permissionId: permission.id,
-        },
-        update: {},
-      });
-    }
-
-    const admin = await tx.user.upsert({
-      where: { email: adminEmail },
-      create: {
-        email: adminEmail,
-        name: adminName,
-        passwordHash,
-        userTypeId: internalType.id,
-        isActive: true,
+  } else {
+    await prisma.$transaction(
+      async (tx) => {
+        await applyBootstrap({
+          client: tx,
+          adminEmail,
+          adminName,
+          passwordHash,
+          permissionEntries,
+        });
       },
-      update: {
-        name: adminName,
-        passwordHash,
-        userTypeId: internalType.id,
-        isActive: true,
+      {
+        maxWait: 30000,
+        timeout: 30000,
       },
-      select: { id: true },
-    });
+    );
+  }
 
-    await tx.userRole.upsert({
-      where: {
-        userId_roleId: {
-          userId: admin.id,
-          roleId: superAdminRole.id,
-        },
+  const admin = await prisma.user.findUnique({
+    where: { email: adminEmail },
+    select: {
+      roles: {
+        where: { role: { code: 'SUPER_ADMIN' } },
+        select: { roleId: true },
       },
-      create: {
-        userId: admin.id,
-        roleId: superAdminRole.id,
+    },
+  });
+
+  if (!admin?.roles.length) {
+    throw new Error('El bootstrap terminó sin asignar SUPER_ADMIN al usuario.');
+  }
+
+  const permissionsGrantedToSuperAdmin = await prisma.rolePermission.count({
+    where: {
+      role: {
+        code: 'SUPER_ADMIN',
       },
-      update: {},
-    });
+    },
   });
 
   console.log(
@@ -230,7 +334,8 @@ async function bootstrapProductionAdmin(options: BootstrapOptions) {
         adminEmail,
         adminName,
         role: 'SUPER_ADMIN',
-        permissionsGrantedToSuperAdmin: permissionEntries.length,
+        noTransaction: options.noTransaction,
+        permissionsGrantedToSuperAdmin,
       },
       null,
       2,
