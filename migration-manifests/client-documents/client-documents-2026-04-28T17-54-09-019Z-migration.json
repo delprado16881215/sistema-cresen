@@ -1,0 +1,170 @@
+{
+  "generatedAt": "2026-04-28T17:54:09.019Z",
+  "dryRun": false,
+  "bucket": "cliente-documentos",
+  "counts": {
+    "ERROR_UPLOAD_FAILED": 16
+  },
+  "entries": [
+    {
+      "clienteId": "cmmv6j0pj035gcd9x05o7yaxa",
+      "documentType": "ineFront",
+      "oldPath": "/uploads/clientes/cmmv6j0pj035gcd9x05o7yaxa/ine-frente-1776283436564-ce60f486-157f-4902-a515-f4fb8c49dcc2.jpg",
+      "newStorageKey": "clientes/cmmv6j0pj035gcd9x05o7yaxa/ineFront/ine-frente-legacy-9b6a32071ad3eb2d70f7.jpg",
+      "fileSize": 3211912,
+      "checksum": "9b6a32071ad3eb2d70f775766b056295f40131b591cf0742792ded23dc26dd3f",
+      "status": "ERROR_UPLOAD_FAILED",
+      "message": "fetch failed"
+    },
+    {
+      "clienteId": "cmmv6j0pj035gcd9x05o7yaxa",
+      "documentType": "ineBack",
+      "oldPath": "/uploads/clientes/cmmv6j0pj035gcd9x05o7yaxa/ine-reverso-1776283436568-321e9efb-c983-4a85-8e76-5111c3aee8f7.jpg",
+      "newStorageKey": "clientes/cmmv6j0pj035gcd9x05o7yaxa/ineBack/ine-reverso-legacy-40911b7ed83eec8463c0.jpg",
+      "fileSize": 2611178,
+      "checksum": "40911b7ed83eec8463c0d3e6ba3be63d011f9e38f632a245b415e80007b2b0bd",
+      "status": "ERROR_UPLOAD_FAILED",
+      "message": "fetch failed"
+    },
+    {
+      "clienteId": "cmmv6j2dn04q4cd9x2ho0k8c2",
+      "documentType": "ineFront",
+      "oldPath": "/uploads/clientes/cmmv6j2dn04q4cd9x2ho0k8c2/ine-frente-1776791540028-bc185f41-19e9-4cdc-9538-fb9697a474e5.jpg",
+      "newStorageKey": "clientes/cmmv6j2dn04q4cd9x2ho0k8c2/ineFront/ine-frente-legacy-88913d40068e594b8de3.jpg",
+      "fileSize": 2386453,
+      "checksum": "88913d40068e594b8de304cafe0a7ad03b1fba720813c93306187ba0fe93f841",
+      "status": "ERROR_UPLOAD_FAILED",
+      "message": "fetch failed"
+    },
+    {
+      "clienteId": "cmmv6j2dn04q4cd9x2ho0k8c2",
+      "documentType": "ineBack",
+      "oldPath": "/uploads/clientes/cmmv6j2dn04q4cd9x2ho0k8c2/ine-reverso-1776791540030-07c8bb86-d5ec-4ee2-82ea-f9ce168e2da7.jpg",
+      "newStorageKey": "clientes/cmmv6j2dn04q4cd9x2ho0k8c2/ineBack/ine-reverso-legacy-10afb27f19a991f182a5.jpg",
+      "fileSize": 2665957,
+      "checksum": "10afb27f19a991f182a5446448beaa62ba62fe9e371aa99d42d46a30938cba8c",
+      "status": "ERROR_UPLOAD_FAILED",
+      "message": "fetch failed"
+    },
+    {
+      "clienteId": "cmmv6j2dn04q4cd9x2ho0k8c2",
+      "documentType": "pagareFront",
+      "oldPath": "/uploads/clientes/cmmv6j2dn04q4cd9x2ho0k8c2/pagare-frente-1776791540035-5fccaf40-fe8f-482b-9859-89ff4ffc3996.jpg",
+      "newStorageKey": "clientes/cmmv6j2dn04q4cd9x2ho0k8c2/pagareFront/pagare-frente-legacy-08fddc17744ac3e4a904.jpg",
+      "fileSize": 1361503,
+      "checksum": "08fddc17744ac3e4a90443e16d6fea3fb9db9322a9b4ff6ad62f9682b21ae7d8",
+      "status": "ERROR_UPLOAD_FAILED",
+      "message": "fetch failed"
+    },
+    {
+      "clienteId": "cmmv6j2dn04q4cd9x2ho0k8c2",
+      "documentType": "pagareBack",
+      "oldPath": "/uploads/clientes/cmmv6j2dn04q4cd9x2ho0k8c2/pagare-reverso-1776791540035-532e772c-39bb-4d38-bad0-3494aa583a16.jpg",
+      "newStorageKey": "clientes/cmmv6j2dn04q4cd9x2ho0k8c2/pagareBack/pagare-reverso-legacy-bd429193af694a00a6b0.jpg",
+      "fileSize": 730685,
+      "checksum": "bd429193af694a00a6b089df4e3aefa60da292a3f3b7bce9625abf22eefb7a8e",
+      "status": "ERROR_UPLOAD_FAILED",
+      "message": "fetch failed"
+    },
+    {
+      "clienteId": "cmmv6j2dn04q4cd9x2ho0k8c2",
+      "documentType": "proofOfAddress",
+      "oldPath": "/uploads/clientes/cmmv6j2dn04q4cd9x2ho0k8c2/comprobante-domicilio-1776791540036-68f7d323-ec2b-4fb6-9234-dd850f216d03.jpg",
+      "newStorageKey": "clientes/cmmv6j2dn04q4cd9x2ho0k8c2/proofOfAddress/comprobante-domicilio-legacy-d4c64d4c584505d4ac3f.jpg",
+      "fileSize": 1631944,
+      "checksum": "d4c64d4c584505d4ac3ffd0ae5f11eb4a836e13cd8a122473f80a726ecbae22b",
+      "status": "ERROR_UPLOAD_FAILED",
+      "message": "fetch failed"
+    },
+    {
+      "clienteId": "cmmv6j2gh04tjcd9xu9zlmavi",
+      "documentType": "ineFront",
+      "oldPath": "/uploads/clientes/cmmv6j2gh04tjcd9xu9zlmavi/ine-frente-1776569129619-ccc63808-e382-470f-bfaf-ad68c60ca0d9.jpg",
+      "newStorageKey": "clientes/cmmv6j2gh04tjcd9xu9zlmavi/ineFront/ine-frente-legacy-6497acf13f18064cc2a2.jpg",
+      "fileSize": 1494073,
+      "checksum": "6497acf13f18064cc2a27e7d2cc3871e8e27743e8874688a0eb35dbff47a526c",
+      "status": "ERROR_UPLOAD_FAILED",
+      "message": "fetch failed"
+    },
+    {
+      "clienteId": "cmmv6j2gh04tjcd9xu9zlmavi",
+      "documentType": "ineBack",
+      "oldPath": "/uploads/clientes/cmmv6j2gh04tjcd9xu9zlmavi/ine-reverso-1776569129622-52f24f90-ead5-469d-87c3-922aed5a607c.jpg",
+      "newStorageKey": "clientes/cmmv6j2gh04tjcd9xu9zlmavi/ineBack/ine-reverso-legacy-a9b117dca210e64e4828.jpg",
+      "fileSize": 2316067,
+      "checksum": "a9b117dca210e64e4828d662998be523d8d8a529f83aedff051fd5735d7432bf",
+      "status": "ERROR_UPLOAD_FAILED",
+      "message": "fetch failed"
+    },
+    {
+      "clienteId": "cmmv6j2gh04tjcd9xu9zlmavi",
+      "documentType": "pagareFront",
+      "oldPath": "/uploads/clientes/cmmv6j2gh04tjcd9xu9zlmavi/pagare-frente-1776569129626-3f066e59-c755-4b9d-b5a2-b847cb9fae2d.jpg",
+      "newStorageKey": "clientes/cmmv6j2gh04tjcd9xu9zlmavi/pagareFront/pagare-frente-legacy-35c6da75eddcebba9827.jpg",
+      "fileSize": 1163532,
+      "checksum": "35c6da75eddcebba982779454543acd87092136fdf56d8872a3444e981e48e34",
+      "status": "ERROR_UPLOAD_FAILED",
+      "message": "fetch failed"
+    },
+    {
+      "clienteId": "cmmv6j2gh04tjcd9xu9zlmavi",
+      "documentType": "pagareBack",
+      "oldPath": "/uploads/clientes/cmmv6j2gh04tjcd9xu9zlmavi/pagare-reverso-1776569129628-d498667b-863c-42c9-8d3c-6baacdf0f875.jpg",
+      "newStorageKey": "clientes/cmmv6j2gh04tjcd9xu9zlmavi/pagareBack/pagare-reverso-legacy-cfe96f9e5a0ccdaa6dc3.jpg",
+      "fileSize": 643877,
+      "checksum": "cfe96f9e5a0ccdaa6dc3d1743513b7d4102a36bf117589ab570a77a6c38aa337",
+      "status": "ERROR_UPLOAD_FAILED",
+      "message": "fetch failed"
+    },
+    {
+      "clienteId": "cmmv6j2gh04tjcd9xu9zlmavi",
+      "documentType": "proofOfAddress",
+      "oldPath": "/uploads/clientes/cmmv6j2gh04tjcd9xu9zlmavi/comprobante-domicilio-1776569129634-4fcf05b0-cc03-4240-bea3-cb4dfd6ec79e.jpg",
+      "newStorageKey": "clientes/cmmv6j2gh04tjcd9xu9zlmavi/proofOfAddress/comprobante-domicilio-legacy-099a93a6f8e01b952cc6.jpg",
+      "fileSize": 3312945,
+      "checksum": "099a93a6f8e01b952cc60cc6f0d3f3435da8d90f7f1f348f8304fc7302b2ea4e",
+      "status": "ERROR_UPLOAD_FAILED",
+      "message": "fetch failed"
+    },
+    {
+      "clienteId": "cmmz5xxjz06am14n07h4vpcwt",
+      "documentType": "ineFront",
+      "oldPath": "/uploads/clientes/cmmz5xxjz06am14n07h4vpcwt/ine-frente-1774027118892-93a8dba4-1704-4cc2-99d7-edfbf9fb8628.jpg",
+      "newStorageKey": "clientes/cmmz5xxjz06am14n07h4vpcwt/ineFront/ine-frente-legacy-7a766c7c97acc8342358.jpg",
+      "fileSize": 2350776,
+      "checksum": "7a766c7c97acc8342358690300acf25acd5d3a0666461b465a1e414402aed58d",
+      "status": "ERROR_UPLOAD_FAILED",
+      "message": "fetch failed"
+    },
+    {
+      "clienteId": "cmmz5xxjz06am14n07h4vpcwt",
+      "documentType": "ineBack",
+      "oldPath": "/uploads/clientes/cmmz5xxjz06am14n07h4vpcwt/ine-reverso-1774027118894-cb8c7c32-b4f8-4cd5-b521-78d0b8d5d142.jpg",
+      "newStorageKey": "clientes/cmmz5xxjz06am14n07h4vpcwt/ineBack/ine-reverso-legacy-5cd0a6d6692047548560.jpg",
+      "fileSize": 2123465,
+      "checksum": "5cd0a6d66920475485609930529875587dafd1d2b97bc603fd80c1cde996f266",
+      "status": "ERROR_UPLOAD_FAILED",
+      "message": "fetch failed"
+    },
+    {
+      "clienteId": "cmn6ezvif001763ia4fnbzki8",
+      "documentType": "ineFront",
+      "oldPath": "/uploads/clientes/cmn6ezvif001763ia4fnbzki8/ine-frente-1774465589323-c0caee0b-83e7-426b-a80b-6dfa091a68b7.jpg",
+      "newStorageKey": "clientes/cmn6ezvif001763ia4fnbzki8/ineFront/ine-frente-legacy-662d92ad677af8145e86.jpg",
+      "fileSize": 1102690,
+      "checksum": "662d92ad677af8145e86b9d13d5ac36264884804abd56eadfd9b9fb1791a1c59",
+      "status": "ERROR_UPLOAD_FAILED",
+      "message": "fetch failed"
+    },
+    {
+      "clienteId": "cmn6ezvif001763ia4fnbzki8",
+      "documentType": "ineBack",
+      "oldPath": "/uploads/clientes/cmn6ezvif001763ia4fnbzki8/ine-reverso-1774465589324-bfdbdbe1-6ee7-4099-a628-6b1c042d28fb.jpg",
+      "newStorageKey": "clientes/cmn6ezvif001763ia4fnbzki8/ineBack/ine-reverso-legacy-c176d4fbf88a469176ca.jpg",
+      "fileSize": 1038240,
+      "checksum": "c176d4fbf88a469176ca32d9b57fb5798546661342d8cd990eb17b4e29e02bd5",
+      "status": "ERROR_UPLOAD_FAILED",
+      "message": "fetch failed"
+    }
+  ]
+}
