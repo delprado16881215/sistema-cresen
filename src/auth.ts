@@ -70,8 +70,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }),
   ],
   callbacks: {
+    authorized({ auth }) {
+      return Boolean(auth?.user);
+    },
     async jwt({ token, user }) {
       if (user) {
+        token.sub = user.id;
         token.roles = (user as { roles?: string[] }).roles ?? [];
         token.permissions = (user as { permissions?: string[] }).permissions ?? [];
       }
