@@ -1,14 +1,10 @@
-import { redirect } from 'next/navigation';
-import { auth } from '@/auth';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Topbar } from '@/components/layout/topbar';
+import { getServerSessionOrThrow } from '@/lib/rbac';
 import { OfflineModeProvider } from '@/offline/offline-mode-provider';
 
 export default async function PrivateLayout({ children }: { children: React.ReactNode }) {
-  const session = await auth();
-  if (!session?.user) {
-    redirect('/login');
-  }
+  const session = await getServerSessionOrThrow();
 
   const permissions = session.user.permissions ?? [];
 
