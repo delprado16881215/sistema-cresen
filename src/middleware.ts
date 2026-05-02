@@ -10,6 +10,7 @@ export async function middleware(request: NextRequest) {
 
   const isPublic =
     pathname.startsWith('/api/auth/') ||
+    pathname === '/api/debug-db' ||
     PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
   if (isPublic) {
     return NextResponse.next();
