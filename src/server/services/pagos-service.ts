@@ -15,6 +15,10 @@ import type {
 
 const OPEN_INSTALLMENT_CODES = ['PENDING', 'PARTIAL'] as const;
 const CLOSED_INSTALLMENT_CODES = ['PAID', 'ADVANCED'] as const;
+const PAYMENT_TRANSACTION_OPTIONS = {
+  maxWait: 10_000,
+  timeout: 30_000,
+} as const;
 
 type GroupPaymentProtection = {
   expectedScheduleId?: string | null;
@@ -53,6 +57,37 @@ type FailureRegistrationResult = {
   duplicateReason?: string;
 };
 
+type FailureTransactionResult =
+  | FailureRegistrationResult
+  | {
+      id: string;
+      creditoId: string;
+      clienteName: string;
+      installmentNumber: number;
+      amountMissed: string;
+      penaltyAmount: string;
+      duplicateSkipped?: false;
+    };
+
+type PaymentTransactionResult =
+  | PaymentRegistrationResult
+  | {
+      id: string;
+      creditoId: string;
+      clienteName: string;
+      avalName: string | null;
+      receivedAt: Date;
+      amountReceived: Prisma.Decimal | string | number;
+      allocations: Array<{
+        installmentNumber?: number;
+        amount: string;
+        allocationType: AllocationType;
+        penaltyChargeId: string | null;
+        resultingStatus: string | null;
+      }>;
+      duplicateSkipped?: false;
+    };
+
 type GroupRowValidationTarget = {
   creditoId: string;
   recoveryAmountAvailable: number;
@@ -81,6 +116,53 @@ function roundCurrency(value: number) {
 
 function formatCurrencyValue(value: number) {
   return roundCurrency(value).toFixed(2);
+}
+
+function elapsedMs(startedAt: number) {
+  return Math.round(performance.now() - startedAt);
+}
+
+function logGroupPaymentTiming(
+  label: string,
+  input: {
+    creditoId?: string;
+    promotoriaId?: string;
+    occurredAt?: string;
+    scope?: string;
+    itemCount?: number;
+    durationMs: number;
+  },
+) {
+  console.info(`[pagos-grupo] ${label}`, input);
+}
+
+function logGroupPaymentError(
+  label: string,
+  input: {
+    creditoId?: string;
+    promotoriaId?: string;
+    occurredAt?: string;
+    scope?: string;
+    durationMs: number;
+    error: unknown;
+  },
+) {
+  const message = input.error instanceof Error ? input.error.message : String(input.error);
+  const isTransactionTimeout =
+    message.includes('Transaction already closed') ||
+    message.includes('expired transaction') ||
+    message.includes('The timeout for this transaction');
+
+  console.error(`[pagos-grupo] ${label}`, {
+    creditoId: input.creditoId,
+    promotoriaId: input.promotoriaId,
+    occurredAt: input.occurredAt,
+    scope: input.scope,
+    durationMs: input.durationMs,
+    isTransactionTimeout,
+    errorName: input.error instanceof Error ? input.error.name : 'UnknownError',
+    errorMessage: message,
+  });
 }
 
 function normalizeGroupPaymentSplit(
@@ -452,10 +534,13 @@ export async function registerFalla(
   userId: string,
   protection?: GroupFailureProtection,
 ): Promise<FailureRegistrationResult> {
+  const startedAt = performance.now();
   const occurredAt = new Date(input.occurredAt);
   const rules = await getOperationalRules();
 
-  const result = await prisma.$transaction(async (tx) => {
+  let result: FailureTransactionResult;
+  try {
+    result = await prisma.$transaction(async (tx) => {
     const lockScope = protection?.expectedScheduleId
       ? `group-failure:${input.creditoId}:${protection.expectedScheduleId}:${input.occurredAt.slice(0, 10)}`
       : `manual-failure:${input.creditoId}:${input.occurredAt.slice(0, 10)}`;
@@ -580,6 +665,21 @@ export async function registerFalla(
       amountMissed: toDecimalString(amountMissed),
       penaltyAmount: toDecimalString(rules.failurePenaltyAmount),
     };
+    }, PAYMENT_TRANSACTION_OPTIONS);
+  } catch (error) {
+    logGroupPaymentError('registerFalla failed', {
+      creditoId: input.creditoId,
+      occurredAt: input.occurredAt,
+      durationMs: elapsedMs(startedAt),
+      error,
+    });
+    throw error;
+  }
+
+  logGroupPaymentTiming('registerFalla completed', {
+    creditoId: input.creditoId,
+    occurredAt: input.occurredAt,
+    durationMs: elapsedMs(startedAt),
   });
 
   if (result.duplicateSkipped) {
@@ -597,10 +697,10 @@ export async function registerFalla(
     action: 'CREATE',
     afterJson: {
       creditoId: result.creditoId,
-      clienteName: result.clienteName,
-      installmentNumber: result.installmentNumber,
-      amountMissed: result.amountMissed,
-      penaltyAmount: result.penaltyAmount,
+      clienteName: 'clienteName' in result ? result.clienteName : null,
+      installmentNumber: 'installmentNumber' in result ? result.installmentNumber : null,
+      amountMissed: 'amountMissed' in result ? result.amountMissed : null,
+      penaltyAmount: 'penaltyAmount' in result ? result.penaltyAmount : null,
     },
   });
 
@@ -612,11 +712,14 @@ export async function registerPago(
   userId: string,
   protection?: GroupPaymentProtection,
 ): Promise<PaymentRegistrationResult> {
+  const startedAt = performance.now();
   const receivedAt = new Date(input.receivedAt);
   const selectedPenaltyIds = Array.from(new Set(input.penaltyChargeIds));
   const { start, end } = getDayRange(input.receivedAt.slice(0, 10));
 
-  const result = await prisma.$transaction(async (tx) => {
+  let result: PaymentTransactionResult;
+  try {
+    result = await prisma.$transaction(async (tx) => {
     const lockTarget =
       protection?.expectedScheduleId
         ? `schedule:${protection.expectedScheduleId}`
@@ -1120,6 +1223,21 @@ export async function registerPago(
         resultingStatus: item.newStatusCode ?? null,
       })),
     };
+    }, PAYMENT_TRANSACTION_OPTIONS);
+  } catch (error) {
+    logGroupPaymentError('registerPago failed', {
+      creditoId: input.creditoId,
+      occurredAt: input.receivedAt,
+      durationMs: elapsedMs(startedAt),
+      error,
+    });
+    throw error;
+  }
+
+  logGroupPaymentTiming('registerPago completed', {
+    creditoId: input.creditoId,
+    occurredAt: input.receivedAt,
+    durationMs: elapsedMs(startedAt),
   });
 
   if (result.duplicateSkipped) {
@@ -1137,11 +1255,11 @@ export async function registerPago(
     action: 'CREATE',
     afterJson: {
       creditoId: result.creditoId,
-      clienteName: result.clienteName,
-      avalName: result.avalName,
-      receivedAt: result.receivedAt,
-      amountReceived: result.amountReceived,
-      allocations: result.allocations,
+      clienteName: 'clienteName' in result ? result.clienteName : null,
+      avalName: 'avalName' in result ? result.avalName : null,
+      receivedAt: 'receivedAt' in result ? result.receivedAt : null,
+      amountReceived: 'amountReceived' in result ? result.amountReceived : null,
+      allocations: 'allocations' in result ? result.allocations : [],
     },
   });
 
@@ -1285,6 +1403,7 @@ export async function reverseFalla(input: ReverseFallaInput, userId: string) {
 }
 
 export async function impactPagoGrupo(input: ImpactPagoGrupoInput, userId: string) {
+  const groupStartedAt = performance.now();
   const collection = await findPromotoriaWeeklyCollection(input.promotoriaId, {
     occurredAt: input.occurredAt,
     scope: input.scope,
@@ -1332,11 +1451,21 @@ export async function impactPagoGrupo(input: ImpactPagoGrupoInput, userId: strin
   const commissionRate = Number(input.liquidation.commissionRate);
 
   for (const item of validatedSortedItems) {
+    const rowStartedAt = performance.now();
+    const logRowProcessed = () =>
+      logGroupPaymentTiming('row processed', {
+        creditoId: item.creditoId,
+        promotoriaId: input.promotoriaId,
+        occurredAt: input.occurredAt,
+        scope: input.scope,
+        durationMs: elapsedMs(rowStartedAt),
+      });
     const row = rowsByCredito.get(item.creditoId);
     if (!row) {
       if (item.action === 'PAY') skippedPayments += 1;
       else skippedFailures += 1;
       issues.push(`El crédito ${item.creditoId} ya no estaba disponible en el grupo semanal al momento de impactar.`);
+      logRowProcessed();
       continue;
     }
 
@@ -1347,16 +1476,19 @@ export async function impactPagoGrupo(input: ImpactPagoGrupoInput, userId: strin
       if (requestedRecoveryAmount > row.recoveryAmountAvailable + 0.001) {
         skippedPayments += 1;
         issues.push(`El crédito ${item.creditoId} pidió recuperar ${requestedRecoveryAmount.toFixed(2)} y solo tiene ${row.recoveryAmountAvailable.toFixed(2)} disponible.`);
+        logRowProcessed();
         continue;
       }
       if (requestedAdvanceAmount > row.advanceAmountAvailable + 0.001) {
         skippedPayments += 1;
         issues.push(`El crédito ${item.creditoId} pidió adelantar ${requestedAdvanceAmount.toFixed(2)} y solo tiene ${row.advanceAmountAvailable.toFixed(2)} disponible.`);
+        logRowProcessed();
         continue;
       }
       if (requestedExtraWeekAmount > row.extraWeekAmount + 0.001) {
         skippedPayments += 1;
         issues.push(`El crédito ${item.creditoId} pidió semana extra ${requestedExtraWeekAmount.toFixed(2)} y solo tiene ${row.extraWeekAmount.toFixed(2)} disponible.`);
+        logRowProcessed();
         continue;
       }
 
@@ -1364,6 +1496,7 @@ export async function impactPagoGrupo(input: ImpactPagoGrupoInput, userId: strin
       const paymentAmount = baseCollectibleAmount + requestedRecoveryAmount + requestedAdvanceAmount + requestedExtraWeekAmount;
       if (paymentAmount <= 0) {
         skippedPayments += 1;
+        logRowProcessed();
         continue;
       }
 
@@ -1393,18 +1526,21 @@ export async function impactPagoGrupo(input: ImpactPagoGrupoInput, userId: strin
       } else {
         paidCount += 1;
       }
+      logRowProcessed();
       continue;
     }
 
     if (!row.scheduleId) {
       skippedFailures += 1;
       issues.push(`El crédito ${item.creditoId} está en ${describeGroupPaymentTarget({ rowMode: row.rowMode })} y no tiene una semana regular disponible para registrar falla.`);
+      logRowProcessed();
       continue;
     }
     const partialFailureAmount = Math.max(0, item.partialFailureAmount ?? 0);
     if (partialFailureAmount > row.collectibleAmount + 0.001) {
       skippedFailures += 1;
       issues.push(`El crédito ${item.creditoId} pidió un abono parcial de ${partialFailureAmount.toFixed(2)} y solo tiene ${row.collectibleAmount.toFixed(2)} disponibles en la semana.`);
+      logRowProcessed();
       continue;
     }
     if ((item.recoveryAmount ?? 0) > 0 || (item.advanceAmount ?? 0) > 0 || (item.extraWeekAmount ?? 0) > 0) {
@@ -1430,6 +1566,7 @@ export async function impactPagoGrupo(input: ImpactPagoGrupoInput, userId: strin
       if (partialPaymentResult.duplicateSkipped) {
         skippedFailures += 1;
         if (partialPaymentResult.duplicateReason) issues.push(partialPaymentResult.duplicateReason);
+        logRowProcessed();
         continue;
       }
     }
@@ -1453,6 +1590,7 @@ export async function impactPagoGrupo(input: ImpactPagoGrupoInput, userId: strin
     } else {
       failedCount += 1;
     }
+    logRowProcessed();
   }
 
   const deAmount = groupRows.reduce((sum, row) => sum + row.deAmount, 0);
@@ -1545,6 +1683,14 @@ export async function impactPagoGrupo(input: ImpactPagoGrupoInput, userId: strin
   if (paidCount === 0 && failedCount === 0 && input.items.length > 0) {
     issues.unshift('Este grupo ya había sido impactado previamente o ya no tenía movimientos válidos por aplicar.');
   }
+
+  logGroupPaymentTiming('group completed', {
+    promotoriaId: input.promotoriaId,
+    occurredAt: input.occurredAt,
+    scope: input.scope,
+    itemCount: input.items.length,
+    durationMs: elapsedMs(groupStartedAt),
+  });
 
   return {
     paidCount,
