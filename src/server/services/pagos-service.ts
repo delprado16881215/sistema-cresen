@@ -250,6 +250,84 @@ function buildGroupExecutionKey(input: {
   return [input.promotoriaId, input.occurredAt, input.scope ?? 'active'].join('|');
 }
 
+async function detectPartialGroupImpact(input: {
+  promotoriaId: string;
+  occurredAt: string;
+  entityId: string;
+}) {
+  const existingImpact = await prisma.auditLog.findFirst({
+    where: {
+      module: 'pagos',
+      entity: 'PagoGrupoImpact',
+      action: 'CREATE',
+      entityId: input.entityId,
+    },
+    select: { id: true },
+  });
+
+  if (existingImpact) {
+    return null;
+  }
+
+  const { start, end } = getDayRange(input.occurredAt);
+  const creditoWhere = { promotoriaId: input.promotoriaId };
+  const paymentEventWhere = {
+    credito: creditoWhere,
+    receivedAt: { gte: start, lt: end },
+    isReversed: false,
+  } satisfies Prisma.PaymentEventWhereInput;
+
+  const [
+    paymentEventCount,
+    paymentAllocationCount,
+    defaultEventCount,
+    recoveryEventCount,
+    advanceEventCount,
+  ] = await Promise.all([
+    prisma.paymentEvent.count({ where: paymentEventWhere }),
+    prisma.paymentAllocation.count({
+      where: {
+        paymentEvent: paymentEventWhere,
+      },
+    }),
+    prisma.defaultEvent.count({
+      where: {
+        credito: creditoWhere,
+        createdAt: { gte: start, lt: end },
+      },
+    }),
+    prisma.recoveryEvent.count({
+      where: {
+        paymentEvent: paymentEventWhere,
+      },
+    }),
+    prisma.advanceEvent.count({
+      where: {
+        paymentEvent: paymentEventWhere,
+      },
+    }),
+  ]);
+
+  const totalFinancialEvents =
+    paymentEventCount +
+    paymentAllocationCount +
+    defaultEventCount +
+    recoveryEventCount +
+    advanceEventCount;
+
+  if (totalFinancialEvents <= 0) {
+    return null;
+  }
+
+  return {
+    paymentEventCount,
+    paymentAllocationCount,
+    defaultEventCount,
+    recoveryEventCount,
+    advanceEventCount,
+  };
+}
+
 function hasPositiveRequestedAmount(value?: number) {
   return (value ?? 0) > 0.001;
 }
@@ -1404,6 +1482,28 @@ export async function reverseFalla(input: ReverseFallaInput, userId: string) {
 
 export async function impactPagoGrupo(input: ImpactPagoGrupoInput, userId: string) {
   const groupStartedAt = performance.now();
+  const groupExecutionKey = buildGroupExecutionKey(input);
+  const partialImpact = await detectPartialGroupImpact({
+    promotoriaId: input.promotoriaId,
+    occurredAt: input.occurredAt,
+    entityId: groupExecutionKey,
+  });
+
+  if (partialImpact) {
+    console.warn('[pagos-grupo] partial impact detected', {
+      promotoriaId: input.promotoriaId,
+      occurredAt: input.occurredAt,
+      scope: input.scope,
+      entityId: groupExecutionKey,
+      ...partialImpact,
+    });
+    throw new AppError(
+      'Grupo con impacto parcial detectado. Requiere reconstrucción de cierre antes de continuar.',
+      'PAGO_GRUPO_PARTIAL_IMPACT_DETECTED',
+      409,
+    );
+  }
+
   const collection = await findPromotoriaWeeklyCollection(input.promotoriaId, {
     occurredAt: input.occurredAt,
     scope: input.scope,
@@ -1428,7 +1528,6 @@ export async function impactPagoGrupo(input: ImpactPagoGrupoInput, userId: strin
       if (!row || item.action !== 'PAY') return item;
       return normalizeGroupPaymentSplit(row, item);
     });
-  const groupExecutionKey = buildGroupExecutionKey(input);
   const groupFingerprint = [
     input.promotoriaId,
     input.occurredAt,
