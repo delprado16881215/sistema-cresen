@@ -1,4 +1,5 @@
 import { formatCurrency } from '@/modules/creditos/credit-calculations';
+import { addOperationalDaysKey, normalizeOperationalDateKey } from '@/lib/operational-date';
 import type {
   SalePaymentSheetGroup,
   SalePaymentSheetRow,
@@ -14,16 +15,10 @@ type OperationalWeekColumn = {
   dueDateLabel: string;
 };
 
-function parseIsoDate(value: string) {
-  const [year, month, day] = value.split('-').map(Number);
-  return new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, day ?? 1));
-}
-
-function formatShortDateLabel(value: Date) {
-  const day = String(value.getUTCDate()).padStart(2, '0');
-  const month = String(value.getUTCMonth() + 1).padStart(2, '0');
-  const year = String(value.getUTCFullYear()).slice(-2);
-  return `${day}/${month}/${year}`;
+function formatShortDateLabel(value: string) {
+  const iso = normalizeOperationalDateKey(value) ?? value;
+  const [year = '', month = '', day = ''] = iso.split('-');
+  return `${day}/${month}/${year.slice(-2)}`;
 }
 
 function buildOperationalWeekColumns(group: SalePaymentSheetGroup): OperationalWeekColumn[] {
@@ -39,17 +34,16 @@ function buildOperationalWeekColumns(group: SalePaymentSheetGroup): OperationalW
       return {
         installmentNumber,
         label: scheduledWeek.label,
-        dueDateLabel: formatShortDateLabel(parseIsoDate(scheduledWeek.dueDateIso)),
+        dueDateLabel: formatShortDateLabel(scheduledWeek.dueDateIso),
       };
     }
 
-    const dueDate = parseIsoDate(group.saleDateIso);
-    dueDate.setUTCDate(dueDate.getUTCDate() + installmentNumber * 7);
+    const dueDateIso = addOperationalDaysKey(group.saleDateIso, installmentNumber * 7);
 
     return {
       installmentNumber,
       label: String(installmentNumber).padStart(2, '0'),
-      dueDateLabel: formatShortDateLabel(dueDate),
+      dueDateLabel: formatShortDateLabel(dueDateIso),
     };
   });
 }

@@ -27,6 +27,7 @@ import { CreditoLegalPanel } from '@/modules/creditos/credito-legal-panel';
 import { ReversalButton } from '@/modules/pagos/reversal-button';
 import { CorrectCreditPartyButton } from '@/modules/creditos/correct-credit-party-button';
 import { listCommunicationHistory } from '@/server/services/communications-service';
+import { addOperationalDays, toOperationalDateKey } from '@/lib/operational-date';
 
 type Params = Promise<{ creditoId: string }>;
 
@@ -62,9 +63,7 @@ export default async function CreditoDetailPage({ params }: { params: Params }) 
   const derivedExtraWeekDueDate = (() => {
     if (credito.extraWeek?.dueDate) return credito.extraWeek.dueDate;
     if (!lastRegularSchedule) return null;
-    const dueDate = new Date(lastRegularSchedule.dueDate);
-    dueDate.setDate(dueDate.getDate() + 7);
-    return dueDate;
+    return addOperationalDays(lastRegularSchedule.dueDate, 7);
   })();
   const virtualExtraWeek = hasFailureHistory && derivedExtraWeekDueDate
     ? {
@@ -127,12 +126,13 @@ export default async function CreditoDetailPage({ params }: { params: Params }) 
             .sort((a, b) => a.getTime() - b.getTime())
         : [];
       const paidEvents = [...directPaidEvents, ...recoveryEvents].sort((a, b) => a.getTime() - b.getTime());
-      const paidAt = paidEvents.length ? paidEvents.at(-1)?.toISOString().slice(0, 10) ?? '-' : '-';
+      const lastPaidEvent = paidEvents.at(-1);
+      const paidAt = lastPaidEvent ? toOperationalDateKey(lastPaidEvent) : '-';
 
       return {
         id: schedule.id,
         weekLabel: String(schedule.installmentNumber),
-        dueDate: schedule.dueDate.toISOString().slice(0, 10),
+        dueDate: toOperationalDateKey(schedule.dueDate),
         paidAt,
         expectedAmount: Number(schedule.expectedAmount),
         paidAmount: Number(schedule.paidAmount),
@@ -145,16 +145,19 @@ export default async function CreditoDetailPage({ params }: { params: Params }) 
           {
             id: 'virtual-extra-week',
             weekLabel: '13',
-            dueDate: virtualExtraWeek.dueDate.toISOString().slice(0, 10),
+            dueDate: toOperationalDateKey(virtualExtraWeek.dueDate),
             paidAt:
               Number(virtualExtraWeek.paidAmount) > 0 && credito.extraWeek
-                ? credito.extraWeek.allocations
-                    .filter((allocation) => !allocation.paymentEvent.isReversed)
-                    .map((allocation) => allocation.paymentEvent.receivedAt)
-                    .sort((a, b) => a.getTime() - b.getTime())
-                    .at(-1)
-                    ?.toISOString()
-                    .slice(0, 10) ?? '-'
+                ? (() => {
+                    const extraWeek = credito.extraWeek;
+                    if (!extraWeek) return '-';
+                    const lastPaidEvent = extraWeek.allocations
+                      .filter((allocation) => !allocation.paymentEvent.isReversed)
+                      .map((allocation) => allocation.paymentEvent.receivedAt)
+                      .sort((a, b) => a.getTime() - b.getTime())
+                      .at(-1);
+                    return lastPaidEvent ? toOperationalDateKey(lastPaidEvent) : '-';
+                  })()
                 : '-',
             expectedAmount: Number(virtualExtraWeek.expectedAmount),
             paidAmount: Number(virtualExtraWeek.paidAmount),
@@ -245,15 +248,15 @@ export default async function CreditoDetailPage({ params }: { params: Params }) 
             status: credito.legalStatus,
             statusLabel: getLegalCreditStatusLabel(credito.legalStatus),
             isInLegalProcess: isActiveLegalCreditStatus(credito.legalStatus),
-            sentToLegalAt: credito.sentToLegalAt?.toISOString().slice(0, 10) ?? null,
-            legalStatusChangedAt: credito.legalStatusChangedAt?.toISOString().slice(0, 10) ?? null,
+            sentToLegalAt: credito.sentToLegalAt ? toOperationalDateKey(credito.sentToLegalAt) : null,
+            legalStatusChangedAt: credito.legalStatusChangedAt ? toOperationalDateKey(credito.legalStatusChangedAt) : null,
             reason: credito.legalStatusReason ?? null,
             notes: credito.legalStatusNotes ?? null,
             latestEvent: credito.legalEvents[0]
               ? {
                   id: credito.legalEvents[0].id,
                   eventType: credito.legalEvents[0].eventType,
-                  effectiveDate: credito.legalEvents[0].effectiveDate.toISOString().slice(0, 10),
+                  effectiveDate: toOperationalDateKey(credito.legalEvents[0].effectiveDate),
                   motivo: credito.legalEvents[0].motivo,
                   observaciones: credito.legalEvents[0].observaciones ?? null,
                   createdAt: credito.legalEvents[0].createdAt.toISOString(),
@@ -269,7 +272,7 @@ export default async function CreditoDetailPage({ params }: { params: Params }) 
             events: credito.legalEvents.map((event) => ({
               id: event.id,
               eventType: event.eventType,
-              effectiveDate: event.effectiveDate.toISOString().slice(0, 10),
+              effectiveDate: toOperationalDateKey(event.effectiveDate),
               motivo: event.motivo,
               observaciones: event.observaciones ?? null,
               createdAt: event.createdAt.toISOString(),
@@ -285,7 +288,9 @@ export default async function CreditoDetailPage({ params }: { params: Params }) 
               credito.cliente.placementStatus === 'BLOCKED_LEGAL'
                 ? 'Bloqueado por jurídico'
                 : 'Colocable',
-            customerPlacementBlockedAt: credito.cliente.placementBlockedAt?.toISOString().slice(0, 10) ?? null,
+            customerPlacementBlockedAt: credito.cliente.placementBlockedAt
+              ? toOperationalDateKey(credito.cliente.placementBlockedAt)
+              : null,
             customerPlacementBlockReason: credito.cliente.placementBlockReason ?? null,
             isCustomerPlacementBlocked: credito.cliente.placementStatus === 'BLOCKED_LEGAL',
             operationalHoldMessage: isActiveLegalCreditStatus(credito.legalStatus)
@@ -343,9 +348,9 @@ export default async function CreditoDetailPage({ params }: { params: Params }) 
           label="Próxima semana"
           value={
             openSchedule
-              ? `Semana ${openSchedule.installmentNumber} · ${openSchedule.dueDate.toISOString().slice(0, 10)}`
+              ? `Semana ${openSchedule.installmentNumber} · ${toOperationalDateKey(openSchedule.dueDate)}`
               : virtualExtraWeek && extraWeekPending > 0
-                ? `Semana 13 · ${virtualExtraWeek.dueDate.toISOString().slice(0, 10)}`
+                ? `Semana 13 · ${toOperationalDateKey(virtualExtraWeek.dueDate)}`
                 : 'Sin pendientes'
           }
         />
@@ -420,7 +425,7 @@ export default async function CreditoDetailPage({ params }: { params: Params }) 
               credito.payments.map((payment) => (
                 <div key={payment.id} className="rounded-xl border border-border/70 p-4">
                   <div className="mb-2 flex items-center justify-between gap-4">
-                    <span className="font-medium">{payment.receivedAt.toISOString().slice(0, 10)}</span>
+                    <span className="font-medium">{toOperationalDateKey(payment.receivedAt)}</span>
                     <span className="text-sm text-primary">
                       {formatCurrency(Number(payment.amountReceived))}
                       {payment.isReversed ? ' · REVERTIDO' : ''}
@@ -555,7 +560,7 @@ export default async function CreditoDetailPage({ params }: { params: Params }) 
             {virtualExtraWeek ? (
               <>
                 <p className="font-medium">Semana 13 · Semana extra</p>
-                <p className="text-muted-foreground">Vence: {virtualExtraWeek.dueDate.toISOString().slice(0, 10)}</p>
+                <p className="text-muted-foreground">Vence: {toOperationalDateKey(virtualExtraWeek.dueDate)}</p>
                 <p className="text-muted-foreground">Esperado: {formatCurrency(Number(virtualExtraWeek.expectedAmount))}</p>
                 <p className="text-muted-foreground">Pagado: {formatCurrency(Number(virtualExtraWeek.paidAmount))}</p>
                 <p className="text-muted-foreground">Estado: {virtualExtraWeek.status}</p>

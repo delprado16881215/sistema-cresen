@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { PERMISSIONS } from '@/config/permissions';
 import { requirePermission } from '@/lib/rbac';
 import { normalizeToIsoDate } from '@/lib/date-input';
+import { todayOperationalDateKey } from '@/lib/operational-date';
 import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,7 +21,7 @@ function parseControlNumber(value: string | undefined) {
 }
 
 function getDefaultDate() {
-  return normalizeToIsoDate(new Date()) ?? new Date().toISOString().slice(0, 10);
+  return todayOperationalDateKey();
 }
 
 export default async function HojaPagosVentaPage({

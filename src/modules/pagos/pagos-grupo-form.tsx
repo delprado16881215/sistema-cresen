@@ -12,6 +12,7 @@ import { Select } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { formatCurrency } from '@/modules/creditos/credit-calculations';
+import type { PromotoriaWeeklyCollectionSummary } from '@/server/repositories/pago-repository';
 
 type GrupoRow = {
   creditoId: string;
@@ -53,7 +54,7 @@ type PagosGrupoFormProps = {
   occurredAt: string;
   scope: 'active' | 'active_with_extra_week' | 'overdue' | 'all';
   rows: GrupoRow[];
-  groupCount: number | null;
+  summary: PromotoriaWeeklyCollectionSummary;
   mode: 'preview' | 'historical';
   liquidation: {
     deAmount: number;
@@ -79,7 +80,7 @@ type PagosGrupoFormProps = {
   } | null;
 };
 
-export function PagosGrupoForm({ promotoriaId, occurredAt, scope, rows, groupCount, mode, liquidation }: PagosGrupoFormProps) {
+export function PagosGrupoForm({ promotoriaId, occurredAt, scope, rows, summary, mode, liquidation }: PagosGrupoFormProps) {
   const router = useRouter();
   const submitLockRef = useRef(false);
   const [failedIds, setFailedIds] = useState<string[]>([]);
@@ -222,7 +223,7 @@ export function PagosGrupoForm({ promotoriaId, occurredAt, scope, rows, groupCou
     [extraWeekCaptureAmounts, rows],
   );
   const isHistoricalMode = mode === 'historical';
-  const displayedGroupCount = isHistoricalMode ? groupCount ?? rows.length : rows.length;
+  const displayedGroupCount = summary.groupCount;
   const sortedRows = useMemo(
     () =>
       [...rows].sort((left, right) => {
@@ -232,42 +233,38 @@ export function PagosGrupoForm({ promotoriaId, occurredAt, scope, rows, groupCou
       }),
     [rows],
   );
-  const baseDeAmount = useMemo(() => rows.reduce((sum, row) => sum + row.deAmount, 0), [rows]);
   const paidRows = useMemo(() => rows.filter((row) => !failedSet.has(row.creditoId)), [failedSet, rows]);
   const failedRows = useMemo(() => rows.filter((row) => failedSet.has(row.creditoId)), [failedSet, rows]);
   const failureAmount = useMemo(
     () =>
       isHistoricalMode
-        ? rows.reduce((sum, row) => sum + row.historicalFailureAmount, 0)
+        ? summary.failureAmount
         : failedRows.reduce((sum, row) => sum + Math.max(0, row.collectibleAmount - (parsedPartialFailureAmounts[row.creditoId] ?? 0)), 0),
-    [failedRows, isHistoricalMode, parsedPartialFailureAmounts, rows],
+    [failedRows, isHistoricalMode, parsedPartialFailureAmounts, summary.failureAmount],
   );
   const recoveryAmount = useMemo(
     () =>
       isHistoricalMode
-        ? rows.reduce((sum, row) => sum + row.historicalRecoveryAmount, 0)
+        ? summary.recoveryAmount
         : paidRows.reduce((sum, row) => sum + (parsedRecoveryAmounts[row.creditoId] ?? 0), 0),
-    [isHistoricalMode, paidRows, parsedRecoveryAmounts, rows],
+    [isHistoricalMode, paidRows, parsedRecoveryAmounts, summary.recoveryAmount],
   );
   const incomingAdvanceAmount = useMemo(
     () =>
       isHistoricalMode
-        ? rows.reduce((sum, row) => sum + row.historicalAdvanceIncomingAmount, 0)
+        ? summary.incomingAdvanceAmount
         : paidRows.reduce((sum, row) => sum + (parsedAdvanceAmounts[row.creditoId] ?? 0), 0),
-    [isHistoricalMode, paidRows, parsedAdvanceAmounts, rows],
+    [isHistoricalMode, paidRows, parsedAdvanceAmounts, summary.incomingAdvanceAmount],
   );
-  const outgoingAdvanceAmount = useMemo(
-    () => rows.reduce((sum, row) => sum + row.outgoingAdvanceAmount, 0),
-    [rows],
-  );
+  const outgoingAdvanceAmount = summary.outgoingAdvanceAmount;
   const extraWeekCollectedAmount = useMemo(
     () =>
       isHistoricalMode
-        ? rows.reduce((sum, row) => sum + row.historicalExtraWeekCollectedAmount, 0)
+        ? summary.extraWeekAmount
         : paidRows.reduce((sum, row) => sum + (parsedExtraWeekCaptureAmounts[row.creditoId] ?? 0), 0),
-    [isHistoricalMode, paidRows, parsedExtraWeekCaptureAmounts, rows],
+    [isHistoricalMode, paidRows, parsedExtraWeekCaptureAmounts, summary.extraWeekAmount],
   );
-  const computedDeAmount = useMemo(() => baseDeAmount, [baseDeAmount]);
+  const computedDeAmount = summary.deAmount;
   const computedSubtotalAmount = useMemo(
     () => computedDeAmount - failureAmount + recoveryAmount,
     [computedDeAmount, failureAmount, recoveryAmount],
@@ -276,18 +273,17 @@ export function PagosGrupoForm({ promotoriaId, occurredAt, scope, rows, groupCou
     () => computedSubtotalAmount + incomingAdvanceAmount - outgoingAdvanceAmount + extraWeekCollectedAmount,
     [computedSubtotalAmount, incomingAdvanceAmount, outgoingAdvanceAmount, extraWeekCollectedAmount],
   );
-  const deAmount = isHistoricalMode && liquidation ? liquidation.deAmount : computedDeAmount;
-  const displayedFailureAmount = isHistoricalMode && liquidation ? liquidation.failureAmount : failureAmount;
-  const displayedRecoveryAmount = isHistoricalMode && liquidation ? liquidation.recoveryAmount : recoveryAmount;
-  const subtotalAmount = isHistoricalMode && liquidation ? liquidation.subtotalAmount : computedSubtotalAmount;
+  const deAmount = summary.deAmount;
+  const displayedFailureAmount = isHistoricalMode ? summary.failureAmount : failureAmount;
+  const displayedRecoveryAmount = isHistoricalMode ? summary.recoveryAmount : recoveryAmount;
+  const subtotalAmount = isHistoricalMode ? summary.subtotalAmount : computedSubtotalAmount;
   const displayedIncomingAdvanceAmount =
-    isHistoricalMode && liquidation ? liquidation.incomingAdvanceAmount : incomingAdvanceAmount;
-  const displayedOutgoingAdvanceAmount =
-    isHistoricalMode && liquidation ? liquidation.outgoingAdvanceAmount : outgoingAdvanceAmount;
+    isHistoricalMode ? summary.incomingAdvanceAmount : incomingAdvanceAmount;
+  const displayedOutgoingAdvanceAmount = summary.outgoingAdvanceAmount;
   const displayedExtraWeekAmount =
-    isHistoricalMode && liquidation ? liquidation.extraWeekAmount : extraWeekCollectedAmount;
+    isHistoricalMode ? summary.extraWeekAmount : extraWeekCollectedAmount;
   const totalToDeliver =
-    isHistoricalMode && liquidation ? liquidation.totalToDeliver : computedTotalToDeliver;
+    isHistoricalMode ? summary.totalToDeliver : computedTotalToDeliver;
   const parsedSaleAmount = useMemo(() => {
     const rawValue = Number(saleAmount ?? 0);
     return Number.isFinite(rawValue) ? Math.max(0, rawValue) : 0;

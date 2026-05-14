@@ -2,6 +2,12 @@ import { AppError } from '@/lib/errors';
 import { getClientePlacementBlockMessage, isClientePlacementBlocked } from '@/lib/legal-status';
 import { prisma } from '@/lib/prisma';
 import { writeAuditLog } from '@/lib/audit';
+import {
+  addOperationalDays,
+  isOperationalMonday,
+  operationalDateToDate,
+  toOperationalDateKey,
+} from '@/lib/operational-date';
 import type { Prisma } from '@prisma/client';
 import type {
   CorrectCreditoAvalInput,
@@ -16,7 +22,7 @@ function formatLoanNumber(sequence: number): string {
 }
 
 function formatCreditFolio(sequence: number, startDate: Date): string {
-  const stamp = startDate.toISOString().slice(0, 10).replace(/-/g, '');
+  const stamp = toOperationalDateKey(startDate).replace(/-/g, '');
   return `CRED-${stamp}-${String(sequence).padStart(4, '0')}`;
 }
 
@@ -44,9 +50,7 @@ function toDecimalString(value: number): string {
 }
 
 function buildWeeklyDueDate(startDate: Date, installmentNumber: number) {
-  const dueDate = new Date(startDate);
-  dueDate.setDate(dueDate.getDate() + installmentNumber * 7);
-  return dueDate;
+  return addOperationalDays(startDate, installmentNumber * 7);
 }
 
 function subtractMinutes(date: Date, minutes: number) {
@@ -78,7 +82,10 @@ function assertClientePlacementEligible(input: {
 }
 
 export async function createCredito(input: CreateCreditoInput, userId: string) {
-  const startDate = new Date(input.startDate);
+  if (!isOperationalMonday(input.startDate)) {
+    throw new AppError('La fecha de venta debe caer en lunes operativo.', 'INVALID_OPERATIONAL_START_DATE', 422);
+  }
+  const startDate = operationalDateToDate(input.startDate);
 
   const [cliente, aval, promotoria, planRule, activeStatus, pendingInstallmentStatus] =
     await Promise.all([
@@ -219,7 +226,10 @@ export async function createCredito(input: CreateCreditoInput, userId: string) {
 }
 
 export async function createCreditoGroup(input: CreateCreditoGroupInput, userId: string) {
-  const startDate = new Date(input.startDate);
+  if (!isOperationalMonday(input.startDate)) {
+    throw new AppError('La fecha de venta debe caer en lunes operativo.', 'INVALID_OPERATIONAL_START_DATE', 422);
+  }
+  const startDate = operationalDateToDate(input.startDate);
 
   const clienteIds = [...new Set(input.items.map((item) => item.clienteId))];
   const avalIds = [...new Set(input.items.map((item) => item.avalClienteId).filter((value): value is string => Boolean(value)))];

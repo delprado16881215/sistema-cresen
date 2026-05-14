@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/layout/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { findCreditoForPayment } from '@/server/repositories/pago-repository';
 import { PagoForm } from '@/modules/pagos/pago-form';
+import { toOperationalDateKey } from '@/lib/operational-date';
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -92,10 +93,10 @@ export default async function NuevoPagoPage({ searchParams }: { searchParams: Se
         id: schedule.id,
         kind: 'REGULAR' as const,
         label: `Semana ${schedule.installmentNumber}`,
-        dueDate: schedule.dueDate.toISOString().slice(0, 10),
+        dueDate: toOperationalDateKey(schedule.dueDate),
         expectedAmount: Number(schedule.expectedAmount),
         paidAmount: Number(schedule.paidAmount),
-        paidAt: isPaid && paidEvents.length ? paidEvents.at(-1)?.toISOString().slice(0, 10) ?? null : null,
+        paidAt: isPaid && paidEvents.length ? toOperationalDateKey(paidEvents.at(-1)!) : null,
         isPaid,
       };
     }),
@@ -112,10 +113,10 @@ export default async function NuevoPagoPage({ searchParams }: { searchParams: Se
               id: credito.extraWeek.id,
               kind: 'EXTRA' as const,
               label: 'Semana 13 · Semana extra',
-              dueDate: credito.extraWeek.dueDate.toISOString().slice(0, 10),
+              dueDate: toOperationalDateKey(credito.extraWeek.dueDate),
               expectedAmount: Number(credito.extraWeek.expectedAmount),
               paidAmount: Number(credito.extraWeek.paidAmount),
-              paidAt: isPaid && paidEvents.length ? paidEvents.at(-1)?.toISOString().slice(0, 10) ?? null : null,
+              paidAt: isPaid && paidEvents.length ? toOperationalDateKey(paidEvents.at(-1)!) : null,
               isPaid,
             };
           })(),
@@ -161,9 +162,9 @@ export default async function NuevoPagoPage({ searchParams }: { searchParams: Se
               weeklyAmount: Number(credito.weeklyAmount),
               totalOutstanding: totalOutstanding + pendingPenalties.reduce((sum, penalty) => sum + penalty.amount, 0),
               nextInstallmentLabel: nextSchedule
-                ? `Semana ${nextSchedule.installmentNumber} · ${nextSchedule.dueDate.toISOString().slice(0, 10)}`
+                ? `Semana ${nextSchedule.installmentNumber} · ${toOperationalDateKey(nextSchedule.dueDate)}`
                 : shouldShowExtraWeek && credito.extraWeek
-                  ? `Semana 13 · ${credito.extraWeek.dueDate.toISOString().slice(0, 10)}`
+                  ? `Semana 13 · ${toOperationalDateKey(credito.extraWeek.dueDate)}`
                   : 'Sin semana abierta',
               nextInstallmentOutstanding: nextOutstanding,
               pendingPenalties,

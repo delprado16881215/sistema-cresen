@@ -1,11 +1,14 @@
 import { prisma } from '@/lib/prisma';
+import { operationalDayRange } from '@/lib/operational-date';
+import type { Prisma } from '@prisma/client';
 
 export async function findCreditos(input: { page: number; pageSize: number; saleDate?: string }) {
-  const where = input.saleDate
+  const saleDateRange = input.saleDate ? operationalDayRange(input.saleDate) : null;
+  const where: Prisma.CreditoWhereInput = saleDateRange
     ? {
         startDate: {
-          gte: new Date(`${input.saleDate}T00:00:00.000Z`),
-          lte: new Date(`${input.saleDate}T23:59:59.999Z`),
+          gte: saleDateRange.start,
+          lt: saleDateRange.end,
         },
       }
     : {};

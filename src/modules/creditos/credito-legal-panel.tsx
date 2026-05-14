@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { formatCobranzaDate, formatCobranzaDateTime } from '@/lib/cobranza-operativa-display';
-import { normalizeToIsoDate } from '@/lib/date-input';
+import { todayOperationalDateKey } from '@/lib/operational-date';
 
 type CreditoLegalPanelProps = {
   creditoId: string;
@@ -66,7 +66,7 @@ export function CreditoLegalPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [fecha, setFecha] = useState(normalizeToIsoDate(new Date()) ?? new Date().toISOString().slice(0, 10));
+  const [fecha, setFecha] = useState(todayOperationalDateKey());
   const [motivo, setMotivo] = useState('');
   const [observaciones, setObservaciones] = useState('');
 

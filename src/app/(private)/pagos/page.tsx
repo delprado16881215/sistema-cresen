@@ -9,6 +9,11 @@ import { findActivePromotoriasForCobranza, findPromotoriaWeeklyCollection, type 
 import { listPagosSchema } from '@/server/validators/pago';
 import { PagosGrupoForm } from '@/modules/pagos/pagos-grupo-form';
 import { normalizeToIsoDate } from '@/lib/date-input';
+import { todayOperationalDateKey } from '@/lib/operational-date';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -27,7 +32,7 @@ export default async function PagosPage({ searchParams }: { searchParams: Search
 
   const promotorias = await findActivePromotoriasForCobranza();
   const selectedPromotoriaId = parsed.promotoriaId ?? promotorias[0]?.id;
-  const occurredAt = parsed.occurredAt ?? new Date().toISOString().slice(0, 10);
+  const occurredAt = parsed.occurredAt ?? todayOperationalDateKey();
   const scope = parsed.scope ?? 'active';
   const collection: PromotoriaWeeklyCollectionResult = selectedPromotoriaId
     ? await findPromotoriaWeeklyCollection(selectedPromotoriaId, {
@@ -35,7 +40,23 @@ export default async function PagosPage({ searchParams }: { searchParams: Search
         scope,
         legalView: 'group_payments',
       })
-    : { mode: 'preview' as const, rows: [], groupCount: 0, liquidation: null };
+    : {
+        mode: 'preview' as const,
+        rows: [],
+        groupCount: 0,
+        summary: {
+          groupCount: 0,
+          deAmount: 0,
+          failureAmount: 0,
+          recoveryAmount: 0,
+          subtotalAmount: 0,
+          incomingAdvanceAmount: 0,
+          outgoingAdvanceAmount: 0,
+          extraWeekAmount: 0,
+          totalToDeliver: 0,
+        },
+        liquidation: null,
+      };
   const rows = collection.rows;
   const selectedPromotoria = promotorias.find((promotoria) => promotoria.id === selectedPromotoriaId) ?? null;
 
@@ -96,7 +117,7 @@ export default async function PagosPage({ searchParams }: { searchParams: Search
           occurredAt={occurredAt}
           scope={scope}
           rows={rows}
-          groupCount={collection.groupCount}
+          summary={collection.summary}
           mode={collection.mode}
           liquidation={collection.liquidation}
         />

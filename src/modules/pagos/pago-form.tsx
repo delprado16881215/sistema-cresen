@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { createPagoSchema, type CreatePagoInput } from '@/server/validators/pago';
 import { formatCurrency } from '@/modules/creditos/credit-calculations';
+import { todayOperationalDateKey } from '@/lib/operational-date';
 
 type PagoFormProps = {
   credito: {
@@ -57,7 +58,7 @@ export function PagoForm({ credito }: PagoFormProps) {
     resolver: zodResolver(createPagoSchema),
     defaultValues: {
       creditoId: credito.id,
-      receivedAt: new Date().toISOString().slice(0, 10),
+      receivedAt: todayOperationalDateKey(),
       amountReceived: credito.nextInstallmentOutstanding,
       penaltyChargeIds: [],
       notes: '',

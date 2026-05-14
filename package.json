@@ -16,7 +16,11 @@
     "prod:bootstrap-admin:dry-run": "tsx scripts/bootstrap-production-admin.ts --dry-run",
     "prod:bootstrap-admin": "tsx scripts/bootstrap-production-admin.ts",
     "migrate:client-documents:dry-run": "tsx scripts/migrate-client-documents-to-supabase-storage.ts --dry-run",
-    "migrate:client-documents": "tsx scripts/migrate-client-documents-to-supabase-storage.ts"
+    "migrate:client-documents": "tsx scripts/migrate-client-documents-to-supabase-storage.ts",
+    "migration:diagnose": "tsx scripts/migration/diagnose-connections.ts",
+    "migration:dry-run": "tsx scripts/migration/dry-run-local-to-production.ts",
+    "migration:run": "tsx scripts/migration/migrate-local-to-production.ts",
+    "migration:validate": "tsx scripts/migration/validate-post-migration.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.8.0",

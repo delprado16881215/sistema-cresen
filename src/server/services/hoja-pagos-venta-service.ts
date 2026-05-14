@@ -1,17 +1,22 @@
 import { prisma } from '@/lib/prisma';
+import {
+  normalizeOperationalDateKey,
+  operationalDayRange,
+  toOperationalDateKey,
+} from '@/lib/operational-date';
 import { findActivePromotoriasForCobranza } from '@/server/repositories/pago-repository';
 
 function formatDateLabel(value: string | Date | null) {
   if (!value) return null;
-  const iso =
-    value instanceof Date ? value.toISOString().slice(0, 10) : value;
+  const iso = normalizeOperationalDateKey(value);
+  if (!iso) return null;
   const [year, month, day] = iso.split('-');
   if (!year || !month || !day) return iso;
   return `${day}/${month}/${year}`;
 }
 
 function toIsoDate(value: Date) {
-  return value.toISOString().slice(0, 10);
+  return toOperationalDateKey(value);
 }
 
 function toNumber(value: { toString(): string } | number | string | null | undefined) {
@@ -128,13 +133,14 @@ export async function getSalePaymentSheetViewData(input: {
     };
   }
 
+  const saleDateRange = operationalDayRange(input.saleDate);
   const credits = await prisma.credito.findMany({
     where: {
       promotoriaId: input.promotoriaId,
       cancelledAt: null,
       startDate: {
-        gte: new Date(`${input.saleDate}T00:00:00.000Z`),
-        lte: new Date(`${input.saleDate}T23:59:59.999Z`),
+        gte: saleDateRange.start,
+        lt: saleDateRange.end,
       },
     },
     select: {

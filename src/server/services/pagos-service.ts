@@ -3,6 +3,12 @@ import type { AdvanceStatus, AllocationType, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { AppError } from '@/lib/errors';
 import { writeAuditLog } from '@/lib/audit';
+import {
+  addOperationalDays,
+  normalizeOperationalDateKey,
+  operationalDateToDate,
+  operationalDayRange,
+} from '@/lib/operational-date';
 import { findPromotoriaWeeklyCollection } from '@/server/repositories/pago-repository';
 import type {
   CreateFallaInput,
@@ -103,11 +109,37 @@ function toDecimalString(value: number) {
   return value.toFixed(2);
 }
 
-function getDayRange(value: string) {
-  const start = new Date(`${value}T00:00:00`);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
-  return { start, end };
+function buildUtcDateOnlyRange(value: string) {
+  const key = normalizeOperationalDateKey(value);
+  if (!key) throw new Error('Invalid operational date input');
+
+  const [yearText = '', monthText = '', dayText = ''] = key.split('-');
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const start = new Date(Date.UTC(year, month - 1, day));
+
+  return {
+    start,
+    end: new Date(start.getTime() + 1000),
+  };
+}
+
+function getDayRanges(value: string) {
+  const operationalRange = operationalDayRange(value);
+  const legacyUtcDateOnlyRange = buildUtcDateOnlyRange(value);
+
+  if (legacyUtcDateOnlyRange.start.getTime() === operationalRange.start.getTime()) {
+    return [operationalRange];
+  }
+
+  return [operationalRange, legacyUtcDateOnlyRange];
+}
+
+function buildDateRangeOr<TDateField extends string>(field: TDateField, value: string) {
+  return getDayRanges(value).map((range) => ({
+    [field]: { gte: range.start, lt: range.end },
+  })) as Array<Record<TDateField, { gte: Date; lt: Date }>>;
 }
 
 function roundCurrency(value: number) {
@@ -269,11 +301,12 @@ async function detectPartialGroupImpact(input: {
     return null;
   }
 
-  const { start, end } = getDayRange(input.occurredAt);
+  const receivedAtOr = buildDateRangeOr('receivedAt', input.occurredAt);
+  const createdAtOr = buildDateRangeOr('createdAt', input.occurredAt);
   const creditoWhere = { promotoriaId: input.promotoriaId };
   const paymentEventWhere = {
     credito: creditoWhere,
-    receivedAt: { gte: start, lt: end },
+    OR: receivedAtOr,
     isReversed: false,
   } satisfies Prisma.PaymentEventWhereInput;
 
@@ -293,7 +326,7 @@ async function detectPartialGroupImpact(input: {
     prisma.defaultEvent.count({
       where: {
         credito: creditoWhere,
-        createdAt: { gte: start, lt: end },
+        OR: createdAtOr,
       },
     }),
     prisma.recoveryEvent.count({
@@ -613,7 +646,7 @@ export async function registerFalla(
   protection?: GroupFailureProtection,
 ): Promise<FailureRegistrationResult> {
   const startedAt = performance.now();
-  const occurredAt = new Date(input.occurredAt);
+  const occurredAt = operationalDateToDate(input.occurredAt);
   const rules = await getOperationalRules();
 
   let result: FailureTransactionResult;
@@ -716,8 +749,7 @@ export async function registerFalla(
 
     if (!credito.extraWeek && rules.enableExtraWeek) {
       const lastDueDate = credito.schedules[credito.schedules.length - 1]?.dueDate ?? credito.startDate;
-      const dueDate = new Date(lastDueDate);
-      dueDate.setDate(dueDate.getDate() + 7);
+      const dueDate = addOperationalDays(lastDueDate, 7);
 
       await tx.extraWeekEvent.create({
         data: {
@@ -791,9 +823,9 @@ export async function registerPago(
   protection?: GroupPaymentProtection,
 ): Promise<PaymentRegistrationResult> {
   const startedAt = performance.now();
-  const receivedAt = new Date(input.receivedAt);
+  const receivedAt = operationalDateToDate(input.receivedAt);
   const selectedPenaltyIds = Array.from(new Set(input.penaltyChargeIds));
-  const { start, end } = getDayRange(input.receivedAt.slice(0, 10));
+  const receivedAtOr = buildDateRangeOr('receivedAt', input.receivedAt);
 
   let result: PaymentTransactionResult;
   try {
@@ -816,7 +848,7 @@ export async function registerPago(
           paymentEvent: {
             creditoId: input.creditoId,
             isReversed: false,
-            receivedAt: { gte: start, lt: end },
+            OR: receivedAtOr,
           },
         },
         select: { id: true },
@@ -840,7 +872,7 @@ export async function registerPago(
           paymentEvent: {
             creditoId: input.creditoId,
             isReversed: false,
-            receivedAt: { gte: start, lt: end },
+            OR: receivedAtOr,
           },
         },
         select: { id: true },
@@ -864,7 +896,7 @@ export async function registerPago(
           paymentEvent: {
             creditoId: input.creditoId,
             isReversed: false,
-            receivedAt: { gte: start, lt: end },
+            OR: receivedAtOr,
           },
         },
         select: { id: true },

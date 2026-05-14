@@ -17,6 +17,7 @@ import {
   type CollectionScope,
 } from '@/server/services/reportes-service';
 import { normalizeToIsoDate } from '@/lib/date-input';
+import { todayOperationalDateKey } from '@/lib/operational-date';
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -28,7 +29,7 @@ const SCOPE_OPTIONS: Array<{ value: CollectionScope; label: string }> = [
 ];
 
 function getDefaultDate() {
-  return normalizeToIsoDate(new Date()) ?? new Date().toISOString().slice(0, 10);
+  return todayOperationalDateKey();
 }
 
 function parseScope(value: string | undefined): CollectionScope {

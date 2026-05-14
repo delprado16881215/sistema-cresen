@@ -1,5 +1,6 @@
 import { AppError } from '@/lib/errors';
 import { getLegalCreditStatusLabel, isActiveLegalCreditStatus } from '@/lib/legal-status';
+import { toOperationalDateKey } from '@/lib/operational-date';
 import {
   findInteraccionReferenceById,
   findOperationalClienteById,
@@ -10,7 +11,7 @@ import {
 } from '@/server/repositories/cobranza-operativa-repository';
 
 function toIsoDate(value: Date) {
-  return value.toISOString().slice(0, 10);
+  return toOperationalDateKey(value);
 }
 
 function toIsoDateTime(value: Date) {

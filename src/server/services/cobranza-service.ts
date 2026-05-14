@@ -15,6 +15,7 @@ import {
   type CollectionMetrics,
 } from '@/server/services/collection-metrics';
 import { getCollectionReportsByDay, type CollectionScope } from '@/server/services/reportes-service';
+import { addOperationalDays, toOperationalDateKey } from '@/lib/operational-date';
 
 export type CobranzaRowModeFilter = 'all' | PromotoriaWeeklyCollectionRow['rowMode'];
 export type CobranzaCycleFilter = 'all' | 'in_cycle' | 'outside_cycle';
@@ -245,7 +246,7 @@ export function isCobranzaActionableRow(row: CobranzaWorkbenchRow) {
 }
 
 function toIsoDate(value: Date) {
-  return value.toISOString().slice(0, 10);
+  return toOperationalDateKey(value);
 }
 
 function matchesCycle(row: CobranzaWorkbenchRow, cycle: CobranzaCycleFilter) {
@@ -578,9 +579,7 @@ export async function getCobranzaCaseDetail(input: {
   const derivedExtraWeekDueDate = (() => {
     if (credito.extraWeek?.dueDate) return credito.extraWeek.dueDate;
     if (!lastRegularSchedule) return null;
-    const dueDate = new Date(lastRegularSchedule.dueDate);
-    dueDate.setDate(dueDate.getDate() + 7);
-    return dueDate;
+    return addOperationalDays(lastRegularSchedule.dueDate, 7);
   })();
   const virtualExtraWeek =
     hasFailureHistory && derivedExtraWeekDueDate

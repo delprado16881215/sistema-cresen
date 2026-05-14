@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { normalizeOperationalDateKey } from '@/lib/operational-date';
 
 const CREDIT_IMPORT_HEADERS = [
   'ID_VENTA',
@@ -126,9 +127,7 @@ function toDateString(value: unknown) {
     return formatDateParts(year, month, day) || text;
   }
 
-  const parsed = new Date(text.includes('T') ? text : `${text}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return text;
-  return parsed.toISOString().slice(0, 10);
+  return normalizeOperationalDateKey(text) ?? text;
 }
 
 function toNumber(value: unknown) {

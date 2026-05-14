@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { calculateWeeklyAmount, formatCurrency, type CreditPlanOption } from '@/modules/creditos/credit-calculations';
 import { ClienteSearchField, type ClienteSearchOption } from '@/modules/creditos/cliente-search-field';
-import { normalizeToIsoDate, parseFlexibleDateInput } from '@/lib/date-input';
+import { addOperationalDaysKey, todayOperationalDateKey } from '@/lib/operational-date';
 
 type CreditoFormProps = {
   promotorias: Array<{ id: string; code: string; name: string; supervision: { id: string; name: string } | null }>;
@@ -37,7 +37,7 @@ export function CreditoForm({ promotorias, planes }: CreditoFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [promotoriaId, setPromotoriaId] = useState(promotorias[0]?.id ?? '');
-  const [startDate, setStartDate] = useState(normalizeToIsoDate(new Date()) ?? new Date().toISOString().slice(0, 10));
+  const [startDate, setStartDate] = useState(todayOperationalDateKey());
 
   const [draftCliente, setDraftCliente] = useState<ClienteSearchOption | null>(null);
   const [draftAval, setDraftAval] = useState<ClienteSearchOption | null>(null);
@@ -52,10 +52,11 @@ export function CreditoForm({ promotorias, planes }: CreditoFormProps) {
   const draftTotalPayable = draftWeeklyAmount * (selectedPlan?.weeks ?? 0);
   const firstDueDate = useMemo(() => {
     if (!startDate) return '-';
-    const date = parseFlexibleDateInput(startDate);
-    if (!date || Number.isNaN(date.getTime())) return '-';
-    date.setDate(date.getDate() + 7);
-    return normalizeToIsoDate(date) ?? '-';
+    try {
+      return addOperationalDaysKey(startDate, 7);
+    } catch {
+      return '-';
+    }
   }, [startDate]);
 
   const saleSummary = useMemo(() => {

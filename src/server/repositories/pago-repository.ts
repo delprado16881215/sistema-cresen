@@ -4,7 +4,12 @@ import {
   GROUP_PAYMENTS_EXCLUDED_LEGAL_CREDIT_STATUSES,
 } from '@/lib/legal-status';
 import { prisma } from '@/lib/prisma';
-import { normalizeToIsoDate, parseFlexibleDateInput } from '@/lib/date-input';
+import {
+  addOperationalDays,
+  getOperationalWeek as calculateOperationalWeek,
+  normalizeOperationalDateKey,
+  operationalDateToDate,
+} from '@/lib/operational-date';
 
 const OPEN_INSTALLMENT_CODES = ['PENDING', 'PARTIAL'] as const;
 
@@ -58,6 +63,7 @@ export type PromotoriaWeeklyCollectionResult = {
   mode: 'preview' | 'historical';
   rows: PromotoriaWeeklyCollectionRow[];
   groupCount: number | null;
+  summary: PromotoriaWeeklyCollectionSummary;
   liquidation: {
     deAmount: number;
     failureAmount: number;
@@ -82,10 +88,26 @@ export type PromotoriaWeeklyCollectionResult = {
   } | null;
 };
 
+export type PromotoriaWeeklyCollectionSummary = {
+  groupCount: number;
+  deAmount: number;
+  failureAmount: number;
+  recoveryAmount: number;
+  subtotalAmount: number;
+  incomingAdvanceAmount: number;
+  outgoingAdvanceAmount: number;
+  extraWeekAmount: number;
+  totalToDeliver: number;
+};
+
 type PromotoriaWeeklyCollectionLegalView = 'operational' | 'group_payments';
 
 function normalizeCollectionScope(scope?: 'active' | 'active_with_extra_week' | 'overdue' | 'all') {
   return scope ?? 'active';
+}
+
+function roundAmount(value: number) {
+  return Number(value.toFixed(2));
 }
 
 async function findGroupImpactAudit(input: {
@@ -228,9 +250,9 @@ async function findUnappliedGroupAttemptDates(input: {
     }),
   ]);
 
-  const creditStartDateKey = input.startDate.toISOString().slice(0, 10);
+  const creditStartDateKey = toDateKey(input.startDate);
   const materializedPaymentDates = new Set(
-    payments.map((payment) => payment.receivedAt.toISOString().slice(0, 10)),
+    payments.map((payment) => toDateKey(payment.receivedAt)),
   );
   const unappliedAttemptDates = new Set<string>();
 
@@ -241,7 +263,7 @@ async function findUnappliedGroupAttemptDates(input: {
     const record = payload as Record<string, unknown>;
     const occurredAt =
       typeof record.occurredAt === 'string' && record.occurredAt
-        ? normalizeToIsoDate(record.occurredAt)
+        ? normalizeOperationalDateKey(record.occurredAt)
         : audit.entityId.split('|')[1] ?? null;
 
     if (!occurredAt || occurredAt < creditStartDateKey || materializedPaymentDates.has(occurredAt)) continue;
@@ -276,32 +298,30 @@ async function findUnappliedGroupAttemptDates(input: {
 }
 
 function toDateKey(dateInput: Date | string) {
-  const date =
-    dateInput instanceof Date
-      ? dateInput
-      : parseFlexibleDateInput(dateInput);
-  if (!date || Number.isNaN(date.getTime())) throw new Error('Invalid date input');
-  const formatter = new Intl.DateTimeFormat('sv-SE', {
-    timeZone: 'America/Mazatlan',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
+  if (
+    dateInput instanceof Date &&
+    dateInput.getUTCHours() === 0 &&
+    dateInput.getUTCMinutes() === 0 &&
+    dateInput.getUTCSeconds() === 0 &&
+    dateInput.getUTCMilliseconds() === 0
+  ) {
+    const year = String(dateInput.getUTCFullYear()).padStart(4, '0');
+    const month = String(dateInput.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(dateInput.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
 
-  return formatter.format(date);
+  const normalized = normalizeOperationalDateKey(dateInput);
+  if (!normalized) throw new Error('Invalid date input');
+  return normalized;
 }
 
 function getOperationalWeek(startDateKey: string, todayKey: string) {
-  const start = new Date(`${startDateKey}T12:00:00`);
-  const today = new Date(`${todayKey}T12:00:00`);
-  const diffInDays = Math.max(0, Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
-  return Math.floor(diffInDays / 7) + 1;
+  return calculateOperationalWeek(startDateKey, todayKey);
 }
 
-function addDays(date: Date, days: number) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
+function addDays(date: Date | string, days: number) {
+  return addOperationalDays(date, days);
 }
 
 function resolveOperationalRowMode(input: {
@@ -729,14 +749,13 @@ export async function findPromotoriaWeeklyCollection(
     orderBy: [{ controlNumber: 'asc' }, { createdAt: 'asc' }],
   });
 
-  const normalizedOccurredAt = normalizeToIsoDate(options?.occurredAt) ?? undefined;
-  const selectedDate = normalizedOccurredAt ? parseFlexibleDateInput(normalizedOccurredAt)! : new Date();
+  const normalizedOccurredAt = normalizeOperationalDateKey(options?.occurredAt) ?? undefined;
+  const selectedDate = normalizedOccurredAt ? operationalDateToDate(normalizedOccurredAt) : new Date();
   const selectedDateKey = toDateKey(selectedDate);
   const collectionWeekKey = selectedDateKey;
-  const salesWindowEndDate = addDays(new Date(`${selectedDateKey}T12:00:00`), -7);
+  const salesWindowEndDate = addDays(selectedDateKey, -7);
   const activeWindowEndKey = toDateKey(salesWindowEndDate);
-  const cutoffEnd = new Date(`${selectedDateKey}T23:59:59.999`);
-  const activeWindowStartDate = addDays(new Date(`${selectedDateKey}T12:00:00`), -84);
+  const activeWindowStartDate = addDays(selectedDateKey, -84);
   const activeWindowStartKey = toDateKey(activeWindowStartDate);
   const impactAuditPayload =
     impactAudit?.afterJson && typeof impactAudit.afterJson === 'object' && !Array.isArray(impactAudit.afterJson)
@@ -852,16 +871,26 @@ export async function findPromotoriaWeeklyCollection(
             : 'active';
 
       const isWithinActiveWindow = salesStartKey >= activeWindowStartKey && salesStartKey <= activeWindowEndKey;
+      const isOperationalEventOnOrBeforeSelectedDate = (value: Date) => toDateKey(value) <= selectedDateKey;
+      const isOperationalEventAfterSelectedDate = (value: Date) => toDateKey(value) > selectedDateKey;
 
       const reversedDefaultIds = new Set(
         credito.reversals
-          .filter((reversal) => reversal.sourceType === 'DEFAULT_EVENT' && reversal.reversedAt <= cutoffEnd)
+          .filter(
+            (reversal) =>
+              reversal.sourceType === 'DEFAULT_EVENT' &&
+              isOperationalEventOnOrBeforeSelectedDate(reversal.reversedAt),
+          )
           .map((reversal) => reversal.sourceId),
       );
 
       const paidAsOf = (schedule: (typeof credito.schedules)[number]) =>
         schedule.allocations
-          .filter((allocation) => !allocation.paymentEvent.isReversed && allocation.paymentEvent.receivedAt <= cutoffEnd)
+          .filter(
+            (allocation) =>
+              !allocation.paymentEvent.isReversed &&
+              isOperationalEventOnOrBeforeSelectedDate(allocation.paymentEvent.receivedAt),
+          )
           .reduce((sum, allocation) => sum + Number(allocation.amount), 0);
 
       const unpaidAsOf = (schedule: (typeof credito.schedules)[number]) =>
@@ -896,21 +925,29 @@ export async function findPromotoriaWeeklyCollection(
         targetSchedule &&
         credito.defaults.find((defaultEvent) => {
           if (defaultEvent.schedule.id !== targetSchedule.id) return false;
-          if (defaultEvent.createdAt > cutoffEnd) return false;
+          if (isOperationalEventAfterSelectedDate(defaultEvent.createdAt)) return false;
           if (reversedDefaultIds.has(defaultEvent.id)) return false;
           const recoveredAmount = defaultEvent.recoveries
-            .filter((recovery) => !recovery.paymentEvent.isReversed && recovery.paymentEvent.receivedAt <= cutoffEnd)
+            .filter(
+              (recovery) =>
+                !recovery.paymentEvent.isReversed &&
+                isOperationalEventOnOrBeforeSelectedDate(recovery.paymentEvent.receivedAt),
+            )
             .reduce((sum, recovery) => sum + Number(recovery.recoveredAmount), 0);
           return recoveredAmount < Number(defaultEvent.amountMissed);
         });
 
       const unresolvedDefaultsSorted = credito.defaults
         .filter((defaultEvent) => {
-          if (defaultEvent.createdAt > cutoffEnd) return false;
+          if (isOperationalEventAfterSelectedDate(defaultEvent.createdAt)) return false;
           if (reversedDefaultIds.has(defaultEvent.id)) return false;
 
           const recoveredAmount = defaultEvent.recoveries
-            .filter((recovery) => !recovery.paymentEvent.isReversed && recovery.paymentEvent.receivedAt <= cutoffEnd)
+            .filter(
+              (recovery) =>
+                !recovery.paymentEvent.isReversed &&
+                isOperationalEventOnOrBeforeSelectedDate(recovery.paymentEvent.receivedAt),
+            )
             .reduce((sum, recovery) => sum + Number(recovery.recoveredAmount), 0);
 
           return recoveredAmount < Number(defaultEvent.amountMissed);
@@ -919,7 +956,11 @@ export async function findPromotoriaWeeklyCollection(
 
       const unresolvedRecoveryAmount = unresolvedDefaultsSorted.reduce((sum, defaultEvent) => {
         const recoveredAmount = defaultEvent.recoveries
-          .filter((recovery) => !recovery.paymentEvent.isReversed && recovery.paymentEvent.receivedAt <= cutoffEnd)
+          .filter(
+            (recovery) =>
+              !recovery.paymentEvent.isReversed &&
+              isOperationalEventOnOrBeforeSelectedDate(recovery.paymentEvent.receivedAt),
+          )
           .reduce((recoverySum, recovery) => recoverySum + Number(recovery.recoveredAmount), 0);
         const pendingRecoveryAmount = Math.max(0, Number(defaultEvent.amountMissed) - recoveredAmount);
         return sum + pendingRecoveryAmount;
@@ -935,7 +976,7 @@ export async function findPromotoriaWeeklyCollection(
                   .filter(
                     (allocation) =>
                       !allocation.paymentEvent.isReversed &&
-                      allocation.paymentEvent.receivedAt <= cutoffEnd,
+                      isOperationalEventOnOrBeforeSelectedDate(allocation.paymentEvent.receivedAt),
                   )
                   .reduce((sum, allocation) => sum + Number(allocation.amount), 0),
             )
@@ -985,7 +1026,7 @@ export async function findPromotoriaWeeklyCollection(
                   (advance) =>
                     !advance.paymentEvent.isReversed &&
                     advance.coversInstallment.id === targetSchedule.id &&
-                    advance.paymentEvent.receivedAt <= cutoffEnd,
+                    isOperationalEventOnOrBeforeSelectedDate(advance.paymentEvent.receivedAt),
                 )
                 .reduce((sum, advance) => sum + Number(advance.amount), 0),
             )
@@ -1232,58 +1273,111 @@ export async function findPromotoriaWeeklyCollection(
     },
   );
 
+  const groupCount =
+    historicalMode && impactAuditPayload
+      ? Number(
+          impactAuditPayload.groupCount ??
+            impactAuditPayload.rowCount ??
+            impactAuditPayload.expectedCount ??
+            rows.length,
+        )
+      : rows.length;
+
+  const liquidation = (() => {
+    const payload = liquidationAudit?.afterJson ?? impactAudit?.afterJson;
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+    const liquidation = (payload as Record<string, unknown>).liquidation;
+    if (!liquidation || typeof liquidation !== 'object' || Array.isArray(liquidation)) return null;
+
+    const record = liquidation as Record<string, unknown>;
+    const commissionBase: 'SALE' | 'TOTAL_TO_DELIVER' =
+      record.commissionBase === 'TOTAL_TO_DELIVER' ? 'TOTAL_TO_DELIVER' : 'SALE';
+    const commissionRateRaw = String(record.commissionRate ?? '10');
+    const commissionRate: '10' | '12.5' | '15' =
+      commissionRateRaw === '12.5' || commissionRateRaw === '15' ? commissionRateRaw : '10';
+
+    return {
+      deAmount: Number(record.deAmount ?? 0),
+      failureAmount: Number(record.failureAmount ?? 0),
+      recoveryAmount: Number(record.recoveryAmount ?? 0),
+      subtotalAmount: Number(record.subtotalAmount ?? 0),
+      incomingAdvanceAmount: Number(record.incomingAdvanceAmount ?? 0),
+      outgoingAdvanceAmount: Number(record.outgoingAdvanceAmount ?? 0),
+      extraWeekAmount: Number(record.extraWeekAmount ?? 0),
+      totalToDeliver: Number(record.totalToDeliver ?? 0),
+      saleAmount: Number(record.saleAmount ?? 0),
+      bonusAmount: Number(record.bonusAmount ?? 0),
+      commissionBase,
+      commissionRate,
+      commissionAmount: Number(record.commissionAmount ?? 0),
+      finalCashAmount: Number(record.finalCashAmount ?? 0),
+      finalCashLabel:
+        typeof record.finalCashLabel === 'string' && record.finalCashLabel.trim()
+          ? record.finalCashLabel
+          : Number(record.finalCashAmount ?? 0) < 0
+            ? 'Inversión'
+            : 'Fondo para la siguiente semana',
+      cumulative: {
+        totalInvestmentAmount: roundAmount(cumulativeLiquidation.totalInvestmentAmount),
+        totalCashAmount: roundAmount(cumulativeLiquidation.totalCashAmount),
+        finalCashAmount: roundAmount(cumulativeLiquidation.finalCashAmount),
+      },
+    };
+  })();
+
+  const fallbackSummary = (() => {
+    const deAmount = roundAmount(rows.reduce((sum, row) => sum + row.deAmount, 0));
+    const failureAmount = historicalMode
+      ? roundAmount(rows.reduce((sum, row) => sum + row.historicalFailureAmount, 0))
+      : 0;
+    const recoveryAmount = historicalMode
+      ? roundAmount(rows.reduce((sum, row) => sum + row.historicalRecoveryAmount, 0))
+      : 0;
+    const incomingAdvanceAmount = historicalMode
+      ? roundAmount(rows.reduce((sum, row) => sum + row.historicalAdvanceIncomingAmount, 0))
+      : 0;
+    const outgoingAdvanceAmount = roundAmount(rows.reduce((sum, row) => sum + row.outgoingAdvanceAmount, 0));
+    const extraWeekAmount = historicalMode
+      ? roundAmount(rows.reduce((sum, row) => sum + row.historicalExtraWeekCollectedAmount, 0))
+      : 0;
+    const subtotalAmount = roundAmount(deAmount - failureAmount + recoveryAmount);
+    const totalToDeliver = roundAmount(
+      subtotalAmount + incomingAdvanceAmount - outgoingAdvanceAmount + extraWeekAmount,
+    );
+
+    return {
+      groupCount,
+      deAmount,
+      failureAmount,
+      recoveryAmount,
+      subtotalAmount,
+      incomingAdvanceAmount,
+      outgoingAdvanceAmount,
+      extraWeekAmount,
+      totalToDeliver,
+    };
+  })();
+
+  const summary: PromotoriaWeeklyCollectionSummary =
+    historicalMode && liquidation
+      ? {
+          groupCount,
+          deAmount: roundAmount(liquidation.deAmount),
+          failureAmount: roundAmount(liquidation.failureAmount),
+          recoveryAmount: roundAmount(liquidation.recoveryAmount),
+          subtotalAmount: roundAmount(liquidation.subtotalAmount),
+          incomingAdvanceAmount: roundAmount(liquidation.incomingAdvanceAmount),
+          outgoingAdvanceAmount: roundAmount(liquidation.outgoingAdvanceAmount),
+          extraWeekAmount: roundAmount(liquidation.extraWeekAmount),
+          totalToDeliver: roundAmount(liquidation.totalToDeliver),
+        }
+      : fallbackSummary;
+
   return {
     mode: historicalMode ? 'historical' : 'preview',
     rows,
-    groupCount:
-      historicalMode && impactAuditPayload
-        ? Number(
-            impactAuditPayload.groupCount ??
-              impactAuditPayload.rowCount ??
-              impactAuditPayload.expectedCount ??
-              rows.length,
-          )
-        : rows.length,
-    liquidation: (() => {
-      const payload = liquidationAudit?.afterJson ?? impactAudit?.afterJson;
-      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
-      const liquidation = (payload as Record<string, unknown>).liquidation;
-      if (!liquidation || typeof liquidation !== 'object' || Array.isArray(liquidation)) return null;
-
-      const record = liquidation as Record<string, unknown>;
-      const commissionBase =
-        record.commissionBase === 'TOTAL_TO_DELIVER' ? 'TOTAL_TO_DELIVER' : 'SALE';
-      const commissionRateRaw = String(record.commissionRate ?? '10');
-      const commissionRate: '10' | '12.5' | '15' =
-        commissionRateRaw === '12.5' || commissionRateRaw === '15' ? commissionRateRaw : '10';
-
-      return {
-        deAmount: Number(record.deAmount ?? 0),
-        failureAmount: Number(record.failureAmount ?? 0),
-        recoveryAmount: Number(record.recoveryAmount ?? 0),
-        subtotalAmount: Number(record.subtotalAmount ?? 0),
-        incomingAdvanceAmount: Number(record.incomingAdvanceAmount ?? 0),
-        outgoingAdvanceAmount: Number(record.outgoingAdvanceAmount ?? 0),
-        extraWeekAmount: Number(record.extraWeekAmount ?? 0),
-        totalToDeliver: Number(record.totalToDeliver ?? 0),
-        saleAmount: Number(record.saleAmount ?? 0),
-        bonusAmount: Number(record.bonusAmount ?? 0),
-        commissionBase,
-        commissionRate,
-        commissionAmount: Number(record.commissionAmount ?? 0),
-        finalCashAmount: Number(record.finalCashAmount ?? 0),
-        finalCashLabel:
-          typeof record.finalCashLabel === 'string' && record.finalCashLabel.trim()
-            ? record.finalCashLabel
-            : Number(record.finalCashAmount ?? 0) < 0
-              ? 'Inversión'
-              : 'Fondo para la siguiente semana',
-        cumulative: {
-          totalInvestmentAmount: Number(cumulativeLiquidation.totalInvestmentAmount.toFixed(2)),
-          totalCashAmount: Number(cumulativeLiquidation.totalCashAmount.toFixed(2)),
-          finalCashAmount: Number(cumulativeLiquidation.finalCashAmount.toFixed(2)),
-        },
-      };
-    })(),
+    groupCount,
+    summary,
+    liquidation,
   };
 }

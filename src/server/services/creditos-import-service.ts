@@ -2,6 +2,14 @@ import { prisma } from '@/lib/prisma';
 import { AppError } from '@/lib/errors';
 import { writeAuditLog } from '@/lib/audit';
 import { getClientePlacementBlockMessage, isClientePlacementBlocked } from '@/lib/legal-status';
+import {
+  addOperationalDays,
+  getOperationalWeek as calculateOperationalWeek,
+  isOperationalMonday,
+  normalizeOperationalDateKey,
+  operationalDateToDate,
+  toOperationalDateKey,
+} from '@/lib/operational-date';
 import type { Prisma } from '@prisma/client';
 import { parseCreditoImportWorkbook, type ParsedImportCreditoRow } from '@/modules/creditos/import/creditos-import-utils';
 
@@ -234,7 +242,7 @@ function formatLoanNumber(sequence: number) {
 }
 
 function formatCreditFolio(sequence: number, startDate: Date) {
-  const stamp = startDate.toISOString().slice(0, 10).replace(/-/g, '');
+  const stamp = toOperationalDateKey(startDate).replace(/-/g, '');
   return `CRED-${stamp}-${String(sequence).padStart(4, '0')}`;
 }
 
@@ -256,9 +264,7 @@ async function generateCreditIdentifiers(tx: Prisma.TransactionClient, startDate
 }
 
 function buildWeeklyDueDate(startDate: Date, installmentNumber: number) {
-  const dueDate = new Date(startDate);
-  dueDate.setDate(dueDate.getDate() + installmentNumber * 7);
-  return dueDate;
+  return addOperationalDays(startDate, installmentNumber * 7);
 }
 
 function chunkRows<T>(rows: T[], batchSize: number) {
@@ -270,9 +276,7 @@ function chunkRows<T>(rows: T[], batchSize: number) {
 }
 
 function isMonday(dateString: string) {
-  const date = new Date(`${dateString}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return false;
-  return date.getDay() === 1;
+  return isOperationalMonday(dateString);
 }
 
 function toCommitErrorMessage(error: unknown) {
@@ -287,8 +291,7 @@ function toCommitErrorMessage(error: unknown) {
 }
 
 function getOperationalWeek(startDate: Date, today: Date) {
-  const diffInDays = Math.max(0, Math.floor((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
-  return Math.floor(diffInDays / 7) + 1;
+  return calculateOperationalWeek(startDate, today);
 }
 
 async function buildImportIntegritySummary(importedIds: string[]) {
@@ -335,7 +338,6 @@ async function buildImportIntegritySummary(importedIds: string[]) {
   });
 
   const today = new Date();
-  today.setHours(12, 0, 0, 0);
 
   const issueDetails: string[] = [];
   let missingRequiredFields = 0;
@@ -348,8 +350,7 @@ async function buildImportIntegritySummary(importedIds: string[]) {
   let overdueCount = 0;
 
   for (const credito of rows) {
-    const startDate = new Date(credito.startDate);
-    startDate.setHours(12, 0, 0, 0);
+    const startDate = credito.startDate;
     const operationalWeek = getOperationalWeek(startDate, today);
     if (operationalWeek >= 14) overdueCount += 1;
 
@@ -379,12 +380,7 @@ async function buildImportIntegritySummary(importedIds: string[]) {
     }
 
     for (const schedule of credito.schedules) {
-      const expectedDueDate = new Date(startDate);
-      expectedDueDate.setDate(expectedDueDate.getDate() + schedule.installmentNumber * 7);
-      expectedDueDate.setHours(12, 0, 0, 0);
-
-      const dueDate = new Date(schedule.dueDate);
-      dueDate.setHours(12, 0, 0, 0);
+      const expectedDueDate = buildWeeklyDueDate(startDate, schedule.installmentNumber);
 
       if (
         schedule.installmentNumber < 1 ||
@@ -395,7 +391,7 @@ async function buildImportIntegritySummary(importedIds: string[]) {
         break;
       }
 
-      if (dueDate.getTime() !== expectedDueDate.getTime()) {
+      if (toOperationalDateKey(schedule.dueDate) !== toOperationalDateKey(expectedDueDate)) {
         inconsistentDates += 1;
         issueDetails.push(`${credito.folio}: fecha incoherente en semana ${schedule.installmentNumber}.`);
         break;
@@ -410,7 +406,7 @@ async function buildImportIntegritySummary(importedIds: string[]) {
 
     const paymentKeys = new Set<string>();
     for (const payment of credito.payments) {
-      const key = `${payment.receivedAt.toISOString().slice(0, 10)}::${Number(payment.amountReceived).toFixed(2)}::${payment.isReversed ? 'R' : 'A'}`;
+      const key = `${toOperationalDateKey(payment.receivedAt)}::${Number(payment.amountReceived).toFixed(2)}::${payment.isReversed ? 'R' : 'A'}`;
       if (paymentKeys.has(key)) {
         duplicatePayments += 1;
         issueDetails.push(`${credito.folio}: posible pago duplicado ${key}.`);
@@ -523,7 +519,7 @@ function validatePreviewRow(
 
   if (!row.saleId) errors.push('ID_VENTA es obligatorio.');
   if (!Number.isInteger(row.controlNumber) || row.controlNumber <= 0) errors.push('NRO_CONTROL debe ser un entero positivo.');
-  if (!row.startDate || Number.isNaN(new Date(`${row.startDate}T00:00:00`).getTime())) {
+  if (!normalizeOperationalDateKey(row.startDate)) {
     errors.push(`FECHA debe ser válida. Valor recibido: ${String(row.receivedStartDate ?? '').trim() || '(vacío)'}.`);
   } else if (!isMonday(row.startDate)) {
     errors.push(
@@ -658,8 +654,9 @@ async function importSingleCreditoRow(row: CreditoImportPreviewRow, userId: stri
     if (!creditStatus) throw new AppError('Estado de crédito inválido para importación.', 'INVALID_STATUS', 422);
     if (!pendingInstallmentStatus) throw new AppError('No existe el estado PENDING para cronograma.', 'CONFIGURATION_ERROR', 500);
 
-    const startDate = new Date(`${payload.startDate}T00:00:00`);
-    if (Number.isNaN(startDate.getTime())) throw new AppError('La fecha de la venta no es válida.', 'INVALID_DATE', 422);
+    const normalizedStartDate = normalizeOperationalDateKey(payload.startDate);
+    if (!normalizedStartDate) throw new AppError('La fecha de la venta no es válida.', 'INVALID_DATE', 422);
+    const startDate = operationalDateToDate(normalizedStartDate);
 
     const existingBySaleId = await tx.credito.findFirst({ where: { saleId: payload.saleId }, select: { id: true } });
     if (existingBySaleId) throw new AppError('ID_VENTA ya existe en la base.', 'DUPLICATE_SALE_ID', 409);

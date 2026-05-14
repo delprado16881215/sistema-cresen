@@ -9,6 +9,10 @@ import { Input } from '@/components/ui/input';
 import { listCreditosSchema } from '@/server/validators/credito';
 import { findCreditos } from '@/server/repositories/credito-repository';
 import { CreditosTable, type CreditoRow } from '@/modules/creditos/creditos-table';
+import {
+  getOperationalWeek as calculateOperationalWeek,
+  toOperationalDateKey,
+} from '@/lib/operational-date';
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 type WeeklyOperationalStatus = CreditoRow['weeklyOperationalStatus'];
@@ -23,14 +27,7 @@ function formatCurrency(value: number) {
 }
 
 function toDateKey(date: Date) {
-  const formatter = new Intl.DateTimeFormat('sv-SE', {
-    timeZone: 'America/Mazatlan',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-
-  return formatter.format(date);
+  return toOperationalDateKey(date);
 }
 
 function toNumber(value: unknown) {
@@ -67,10 +64,7 @@ function buildFilterHref(
 }
 
 function getOperationalWeek(startDateKey: string, todayKey: string) {
-  const start = new Date(`${startDateKey}T12:00:00`);
-  const today = new Date(`${todayKey}T12:00:00`);
-  const diffInDays = Math.max(0, Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
-  return Math.floor(diffInDays / 7) + 1;
+  return calculateOperationalWeek(startDateKey, todayKey);
 }
 
 export default async function CreditosPage({ searchParams }: { searchParams: SearchParams }) {
@@ -153,7 +147,7 @@ export default async function CreditosPage({ searchParams }: { searchParams: Sea
       (schedule) => toDateKey(schedule.dueDate) > todayKey && schedule.installmentStatus.code === 'ADVANCED',
     );
 
-    const startDateKey = row.startDate.toISOString().slice(0, 10);
+    const startDateKey = toDateKey(row.startDate);
     const operationalWeek = getOperationalWeek(startDateKey, todayKey);
     const operationalCreditStatus: OperationalCreditStatus =
       operationalWeek >= 14 ? 'OVERDUE' : operationalWeek === 13 ? 'ACTIVE_WITH_EXTRA_WEEK' : 'ACTIVE';
